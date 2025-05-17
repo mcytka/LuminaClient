@@ -36,9 +36,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Install Android SDK & NDK (без `setup-android`)
+      - name: Set up Android SDK & NDK
+        uses: android-actions/setup-android@v2
+
+      - name: Install required dependencies
         run: |
-          sdkmanager --install "platforms;android-35" "build-tools;34.0.0" "ndk;27.2.12479018"
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libsnappy-dev
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
