@@ -41,9 +41,11 @@ jobs:
     - name: Grant execute permission to Gradle
       run: chmod +x ./gradlew
 
+    - name: Build Java Modules
+      run: ./gradlew :Protocol:common:build
+
     - name: Build Native Libraries
       run: |
-        ./gradlew :Protocol:common:externalNativeBuildRelease
         ./gradlew :Network:transport-raknet:externalNativeBuildRelease
         ./gradlew :minecraft-msftauth:externalNativeBuildRelease
 
