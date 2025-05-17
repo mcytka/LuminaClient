@@ -66,7 +66,7 @@ jobs:
       run: jarsigner -verify -verbose -certs app/build/outputs/apk/release/app-release.apk
 
     - name: Upload Signed APK
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: app-signed-release
         path: app/build/outputs/apk/release/app-release.apk
