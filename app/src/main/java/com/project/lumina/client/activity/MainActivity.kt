@@ -200,18 +200,24 @@ class MainActivity : ComponentActivity() {
         
         currentInstance = this
         //Muffin.Start(this)
-        val amplitude = Amplitude(
-            Configuration(
-                apiKey = TrackUtil.TrackApi,
-                context = applicationContext,
-                defaultTracking = DefaultTrackingOptions.ALL,
+        val apiKey = TrackUtil.TrackApi
+        if (!apiKey.isNullOrEmpty()) {
+            val amplitude = Amplitude(
+                Configuration(
+                    apiKey = apiKey,
+                    context = applicationContext,
+                    defaultTracking = DefaultTrackingOptions.ALL,
+                )
             )
-        )
 
-        val updateCheck = UpdateCheck()
-        updateCheck.initiateHandshake(this)
+            val updateCheck = UpdateCheck()
+            updateCheck.initiateHandshake(this)
 
-        amplitude.track("Lumina Mobile")
+            amplitude.track("Lumina Mobile")
+        } else {
+            val updateCheck = UpdateCheck()
+            updateCheck.initiateHandshake(this)
+        }
 
         
         InternalLoggerFactory.setDefaultFactory(JdkLoggerFactory.INSTANCE)
