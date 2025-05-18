@@ -157,7 +157,8 @@ class VersionCheckerActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val versionConfig by viewModel.versionConfig.collectAsState()
+                    val versionConfigState by viewModel.versionConfig.collectAsState()
+                    val versionConfig = versionConfigState
                     when {
                         versionConfig == null -> {
                             val kson = HashCat.getInstance()
