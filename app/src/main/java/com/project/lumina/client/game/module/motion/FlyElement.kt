@@ -32,71 +32,61 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
     private var tickCounter = 0
     private var lastPosition: Vector3f? = null
 
+    private val TICK_UPDATE_INTERVAL = 2
+
+    // Helper function to create UpdateAbilitiesPacket with given fly speed
+    private fun createUpdateAbilitiesPacket(flySpeedValue: Float): UpdateAbilitiesPacket {
+        return UpdateAbilitiesPacket().apply {
+            playerPermission = PlayerPermission.OPERATOR
+            commandPermission = CommandPermission.OWNER
+            abilityLayers.add(AbilityLayer().apply {
+                layerType = AbilityLayer.Type.BASE
+                abilitiesSet.addAll(Ability.entries.toTypedArray())
+                abilityValues.addAll(
+                    listOf(
+                        Ability.BUILD,
+                        Ability.MINE,
+                        Ability.DOORS_AND_SWITCHES,
+                        Ability.OPEN_CONTAINERS,
+                        Ability.ATTACK_PLAYERS,
+                        Ability.ATTACK_MOBS,
+                        Ability.OPERATOR_COMMANDS,
+                        Ability.MAY_FLY,
+                        Ability.FLY_SPEED,
+                        Ability.WALK_SPEED
+                    )
+                )
+                walkSpeed = 0.1f
+                flySpeed = flySpeedValue
+            })
+        }
+    }
+
+    private val enableFlyAbilitiesPacket = createUpdateAbilitiesPacket(flySpeed)
+    private val disableFlyAbilitiesPacket = createUpdateAbilitiesPacket(0.0f).apply {
+        abilityLayers[0].abilityValues.remove(Ability.MAY_FLY) // Remove fly ability when disabling
+    }
+
+    // Converts degrees to radians
     private fun toRadians(degrees: Double): Double = degrees * (PI / 180.0)
-
-    private val enableFlyAbilitiesPacket = UpdateAbilitiesPacket().apply {
-        playerPermission = PlayerPermission.OPERATOR
-        commandPermission = CommandPermission.OWNER
-        abilityLayers.add(AbilityLayer().apply {
-            layerType = AbilityLayer.Type.BASE
-            abilitiesSet.addAll(Ability.entries.toTypedArray())
-            abilityValues.addAll(
-                listOf(
-                    Ability.BUILD,
-                    Ability.MINE,
-                    Ability.DOORS_AND_SWITCHES,
-                    Ability.OPEN_CONTAINERS,
-                    Ability.ATTACK_PLAYERS,
-                    Ability.ATTACK_MOBS,
-                    Ability.OPERATOR_COMMANDS,
-                    Ability.MAY_FLY,
-                    Ability.FLY_SPEED,
-                    Ability.WALK_SPEED
-                )
-            )
-            walkSpeed = 0.1f
-            flySpeed = this@FlyElement.flySpeed
-        })
-    }
-
-    private val disableFlyAbilitiesPacket = UpdateAbilitiesPacket().apply {
-        playerPermission = PlayerPermission.OPERATOR
-        commandPermission = CommandPermission.OWNER
-        abilityLayers.add(AbilityLayer().apply {
-            layerType = AbilityLayer.Type.BASE
-            abilitiesSet.addAll(Ability.entries.toTypedArray())
-            abilityValues.addAll(
-                listOf(
-                    Ability.BUILD,
-                    Ability.MINE,
-                    Ability.DOORS_AND_SWITCHES,
-                    Ability.OPEN_CONTAINERS,
-                    Ability.ATTACK_PLAYERS,
-                    Ability.ATTACK_MOBS,
-                    Ability.OPERATOR_COMMANDS,
-                    Ability.WALK_SPEED
-                )
-            )
-            walkSpeed = 0.1f
-            flySpeed = 0.0f
-        })
-    }
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
         val packet = interceptablePacket.packet
 
+        // Intercept RequestAbilityPacket for flying to prevent default handling
         if (packet is RequestAbilityPacket && packet.ability == Ability.FLYING) {
             interceptablePacket.intercept()
             return
         }
 
+        // Intercept UpdateAbilitiesPacket to control flying abilities
         if (packet is UpdateAbilitiesPacket) {
             interceptablePacket.intercept()
             return
         }
 
         if (packet is PlayerAuthInputPacket) {
-
+            // Enable or disable flying abilities based on module state
             if (!canFly && isEnabled) {
                 enableFlyAbilitiesPacket.uniqueEntityId = session.localPlayer.uniqueEntityId
                 session.clientBound(enableFlyAbilitiesPacket)
@@ -108,6 +98,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
             }
 
             if (isEnabled) {
+                // Intercept start/stop flying input packets to prevent default behavior
                 if (packet.inputData.contains(PlayerAuthInputData.START_FLYING) ||
                     packet.inputData.contains(PlayerAuthInputData.STOP_FLYING)) {
                     interceptablePacket.intercept()
@@ -116,6 +107,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                 val isFlying = packet.inputData.contains(PlayerAuthInputData.JUMPING) ||
                         packet.inputData.contains(PlayerAuthInputData.SNEAKING)
 
+                // Calculate vertical motion based on jump/sneak input
                 var verticalMotion = 0f
                 if (isFlying) {
                     if (packet.inputData.contains(PlayerAuthInputData.JUMPING)) {
@@ -125,6 +117,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                     }
                 }
 
+                // Calculate horizontal input motion ignoring vertical component
                 val inputMotion = packet.motion?.let {
                     Vector3f.from(it.x, 0f, it.y)
                 } ?: Vector3f.ZERO
