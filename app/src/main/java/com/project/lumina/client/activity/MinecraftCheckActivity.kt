@@ -124,22 +124,6 @@ class MinecraftCheckActivity : ComponentActivity() {
                 }
             }
         }
-
-        } else {
-            
-            setContent {
-                LuminaClientTheme {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        MinecraftNotFoundScreen(
-                            onGetMinecraftClick = { openPlayStore() }
-                        )
-                    }
-                }
-            }
-        }
     }
 
     private fun isMinecraftInstalled(): Boolean {
