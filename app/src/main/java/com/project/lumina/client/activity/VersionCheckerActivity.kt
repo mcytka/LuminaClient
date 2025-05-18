@@ -174,15 +174,15 @@ class VersionCheckerActivity : ComponentActivity() {
                             val matchJson = kson.LintHashInit(this)
                             if (matchJson) { }
                             val installedVersion = getInstalledMinecraftVersion()
-                            if (isCompatibleVersion(installedVersion, versionConfig!!)) {
+                            if (isCompatibleVersion(installedVersion, versionConfig)) {
                                 startMainActivity()
                             } else {
                                 IncompatibleVersionScreen(
                                     installedVersion = installedVersion ?: "Unknown",
-                                    requiredVersion = versionConfig!!.minimumVersion,
+                                    requiredVersion = versionConfig.minimumVersion,
                                     versionMessage = String.format(
-                                        versionConfig!!.versionMessage,
-                                        versionConfig!!.minimumVersion
+                                        versionConfig.versionMessage,
+                                        versionConfig.minimumVersion
                                     ),
                                     onUpdateClick = { openPlayStore() }
                                 )
