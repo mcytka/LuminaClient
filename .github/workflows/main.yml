@@ -47,26 +47,11 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      - name: Build Release APK
-        run: ./gradlew assembleRelease --stacktrace
+      - name: Build Release APK (без подписи)
+        run: ./gradlew assembleRelease
 
-      - name: Decode and restore keystore
-        run: echo "${{ secrets.BUILD_KEY }}" | base64 -d > buildKey.jks
-
-      - name: Sign APK
-        run: |
-          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-          -keystore buildKey.jks \
-          app/build/outputs/apk/release/app-release.apk alias_name
-        env:
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-
-      - name: Verify APK signature
-        run: jarsigner -verify -verbose -certs app/build/outputs/apk/release/app-release.apk
-
-      - name: Upload Signed APK
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: signed-release-apk
+          name: release-apk
           path: app/build/outputs/apk/release/app-release.apk
