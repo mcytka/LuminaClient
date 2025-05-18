@@ -19,7 +19,7 @@ class AppContext : Application(), Thread.UncaughtExceptionHandler {
         super.onCreate()
         instance = this
 
-        com.google.firebase.FirebaseApp.initializeApp(this)
+//        com.google.firebase.FirebaseApp.initializeApp(this)
 
 
 
