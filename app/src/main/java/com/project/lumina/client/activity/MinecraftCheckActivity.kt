@@ -83,15 +83,48 @@ class MinecraftCheckActivity : ComponentActivity() {
                 )
             )
             amplitude.track("Initialized Lumina")
+            val updateCheck = UpdateCheck()
+            updateCheck.initiateHandshake(this)
+            amplitude.track("Initialized Lumina")
+            if (isMinecraftInstalled()) {
+                val verifier = HashCat.getInstance()
+                val isValid = verifier.LintHashInit(this)
+                if (isValid) {}
+                startVersionCheckerActivity()
+            } else {
+                setContent {
+                    LuminaClientTheme {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.background
+                        ) {
+                            MinecraftNotFoundScreen(
+                                onGetMinecraftClick = { openPlayStore() }
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            val updateCheck = UpdateCheck()
+            updateCheck.initiateHandshake(this)
+            if (isMinecraftInstalled()) {
+                startVersionCheckerActivity()
+            } else {
+                setContent {
+                    LuminaClientTheme {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.background
+                        ) {
+                            MinecraftNotFoundScreen(
+                                onGetMinecraftClick = { openPlayStore() }
+                            )
+                        }
+                    }
+                }
+            }
         }
-        val updateCheck = UpdateCheck()
-        updateCheck.initiateHandshake(this)
-        amplitude.track("Initialized Lumina")
-        if (isMinecraftInstalled()) {
-            val verifier = HashCat.getInstance()
-            val isValid = verifier.LintHashInit(this)
-            if (isValid) {}
-            startVersionCheckerActivity()
 
         } else {
             
