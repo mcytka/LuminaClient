@@ -147,10 +147,51 @@ class VersionCheckerActivity : ComponentActivity() {
             )
 
             amplitude.track("Version Checker Initialized")
-            val viewModel: VersionCheckerViewModel by viewModels()
-            viewModel.loadVersionConfig(this, configUrl)
-            val updateCheck = UpdateCheck()
-            updateCheck.initiateHandshake(this)
+        val viewModel: VersionCheckerViewModel by viewModels()
+        viewModel.loadVersionConfig(this, configUrl)
+        val updateCheck = UpdateCheck()
+        updateCheck.initiateHandshake(this)
+        setContent {
+            LuminaClientTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    val versionConfig by viewModel.versionConfig.collectAsState()
+                    when {
+                        versionConfig == null -> {
+                            val kson = HashCat.getInstance()
+                            val matchJson = kson.LintHashInit(this)
+                            if (matchJson) { }
+                            Text(
+                                text = "Loading configuration...",
+                                modifier = Modifier.fillMaxSize(),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                        else -> {
+                            val kson = HashCat.getInstance()
+                            val matchJson = kson.LintHashInit(this)
+                            if (matchJson) { }
+                            val installedVersion = getInstalledMinecraftVersion()
+                            if (isCompatibleVersion(installedVersion, versionConfig!!)) {
+                                startMainActivity()
+                            } else {
+                                IncompatibleVersionScreen(
+                                    installedVersion = installedVersion ?: "Unknown",
+                                    requiredVersion = versionConfig!!.minimumVersion,
+                                    versionMessage = String.format(
+                                        versionConfig!!.versionMessage,
+                                        versionConfig!!.minimumVersion
+                                    ),
+                                    onUpdateClick = { openPlayStore() }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
         } else {
             val viewModel: VersionCheckerViewModel by viewModels()
             viewModel.loadVersionConfig(this, configUrl)
