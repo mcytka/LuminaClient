@@ -73,13 +73,17 @@ class MinecraftCheckActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val amplitude = Amplitude(
-            Configuration(
-                apiKey = TrackUtil.TrackApi,
-                context = applicationContext,
-                defaultTracking = DefaultTrackingOptions.ALL,
+        val apiKey = TrackUtil.TrackApi
+        if (!apiKey.isNullOrEmpty()) {
+            val amplitude = Amplitude(
+                Configuration(
+                    apiKey = apiKey,
+                    context = applicationContext,
+                    defaultTracking = DefaultTrackingOptions.ALL,
+                )
             )
-        )
+            amplitude.track("Initialized Lumina")
+        }
         val updateCheck = UpdateCheck()
         updateCheck.initiateHandshake(this)
         amplitude.track("Initialized Lumina")
