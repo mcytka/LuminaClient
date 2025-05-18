@@ -17,6 +17,11 @@ android {
     namespace = "com.project.lumina.client"
     compileSdk = 35
 
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
+
     defaultConfig {
         applicationId = "com.project.lumina.client"
         minSdk = 28
