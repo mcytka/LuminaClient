@@ -18,6 +18,7 @@ import org.cloudburstmc.protocol.bedrock.packet.UpdateAbilitiesPacket
 import kotlin.math.cos
 import kotlin.math.PI
 import kotlin.math.sin
+import kotlin.random.Random
 
 class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
     name = "Fly",
@@ -33,6 +34,10 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
     private var lastPosition: Vector3f? = null
 
     private val TICK_UPDATE_INTERVAL = 2
+
+    // Timer to track airborne time
+    private var airborneTicks = 0
+    private val MAX_AIRBORNE_TICKS = 20 * 5 // 5 seconds at 20 ticks per second
 
     // Helper function to create UpdateAbilitiesPacket with given fly speed
     private fun createUpdateAbilitiesPacket(flySpeedValue: Float): UpdateAbilitiesPacket {
@@ -107,24 +112,24 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                 val isFlying = packet.inputData.contains(PlayerAuthInputData.JUMPING) ||
                         packet.inputData.contains(PlayerAuthInputData.SNEAKING)
 
-                // Calculate vertical motion based on jump/sneak input
+                // Calculate vertical motion based on jump/sneak input with subtle randomization
                 var verticalMotion = 0f
                 if (isFlying) {
                     if (packet.inputData.contains(PlayerAuthInputData.JUMPING)) {
-                        verticalMotion = verticalSpeed
+                        verticalMotion = verticalSpeed * (0.85f + Random.nextFloat() * 0.3f) // 85% to 115% vertical speed
                     } else if (packet.inputData.contains(PlayerAuthInputData.SNEAKING)) {
-                        verticalMotion = -verticalSpeed
+                        verticalMotion = -verticalSpeed * (0.85f + Random.nextFloat() * 0.3f)
                     }
                 }
 
-                // Calculate horizontal input motion ignoring vertical component
+                // Calculate horizontal input motion ignoring vertical component with slight speed variation
                 val inputMotion = packet.motion?.let {
                     Vector3f.from(it.x, 0f, it.y)
                 } ?: Vector3f.ZERO
 
                 val yaw = packet.rotation?.y?.toDouble()?.let { toRadians(it) } ?: 0.0
                 val horizontalMotion = if (inputMotion != Vector3f.ZERO && isFlying) {
-                    val speed = flySpeed.toDouble()
+                    val speed = flySpeed * (0.9f + Random.nextFloat() * 0.2f) // 90% to 110% fly speed
                     Vector3f.from(
                         ((-sin(yaw) * inputMotion.z.toDouble() + cos(yaw) * inputMotion.x.toDouble()) * speed).toFloat(),
                         0f,
@@ -140,23 +145,38 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                     horizontalMotion.z
                 )
 
+                // Manage airborne time to avoid long continuous air time
                 if (isFlying && combinedMotion != Vector3f.ZERO) {
-                    val motionPacket = SetEntityMotionPacket().apply {
-                        runtimeEntityId = session.localPlayer.runtimeEntityId
-                        motion = combinedMotion
+                    airborneTicks++
+                    if (airborneTicks > MAX_AIRBORNE_TICKS) {
+                        // Simulate brief ground contact by sending zero vertical motion for a tick
+                        val stopMotionPacket = SetEntityMotionPacket().apply {
+                            runtimeEntityId = session.localPlayer.runtimeEntityId
+                            motion = Vector3f.from(horizontalMotion.x, 0f, horizontalMotion.z)
+                        }
+                        session.clientBound(stopMotionPacket)
+                        airborneTicks = 0
+                    } else {
+                        val motionPacket = SetEntityMotionPacket().apply {
+                            runtimeEntityId = session.localPlayer.runtimeEntityId
+                            motion = combinedMotion
+                        }
+                        session.clientBound(motionPacket)
                     }
-                    session.clientBound(motionPacket)
                 } else if (isFlying) {
+                    airborneTicks = 0
                     val stopMotionPacket = SetEntityMotionPacket().apply {
                         runtimeEntityId = session.localPlayer.runtimeEntityId
                         motion = Vector3f.ZERO
                     }
                     session.clientBound(stopMotionPacket)
+                } else {
+                    airborneTicks = 0
                 }
 
                 tickCounter++
                 val playerPosition = packet.position?.let { Vector3f.from(it.x, it.y, it.z) } ?: Vector3f.ZERO
-                if (playerPosition != Vector3f.ZERO && tickCounter % 2 == 0) {
+                if (playerPosition != Vector3f.ZERO && tickCounter % TICK_UPDATE_INTERVAL == 0) {
                     if (lastPosition == null || playerPosition != lastPosition) {
                         val movePacket = MovePlayerPacket().apply {
                             runtimeEntityId = session.localPlayer.uniqueEntityId
