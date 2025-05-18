@@ -67,15 +67,18 @@ class RemoteLinkActivity : ComponentActivity() {
         if (isValid) { }
         currentInstance = this
 
-        val amplitude = Amplitude(
-            Configuration(
-                apiKey = TrackUtil.TrackApi,
-                context = applicationContext,
-                defaultTracking = DefaultTrackingOptions.ALL,
+        val apiKey = TrackUtil.TrackApi
+        if (!apiKey.isNullOrEmpty()) {
+            val amplitude = Amplitude(
+                Configuration(
+                    apiKey = apiKey,
+                    context = applicationContext,
+                    defaultTracking = DefaultTrackingOptions.ALL,
+                )
             )
-        )
 
-        amplitude.track("Remote Link Opened")
+            amplitude.track("Remote Link Opened")
+        }
         enableEdgeToEdge()
         val updateCheck = UpdateCheck()
         updateCheck.initiateHandshake(this)
