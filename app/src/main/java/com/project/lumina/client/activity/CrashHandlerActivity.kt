@@ -49,15 +49,17 @@ class CrashHandlerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val amplitude = Amplitude(
-            Configuration(
-                apiKey = TrackUtil.TrackApi,
-                context = applicationContext,
-                defaultTracking = DefaultTrackingOptions.ALL,
+        val apiKey = TrackUtil.TrackApi
+        if (!apiKey.isNullOrEmpty()) {
+            val amplitude = Amplitude(
+                Configuration(
+                    apiKey = apiKey,
+                    context = applicationContext,
+                    defaultTracking = DefaultTrackingOptions.ALL,
+                )
             )
-        )
-
-        amplitude.track("Lumina Crashed")
+            amplitude.track("Lumina Crashed")
+        }
         val updateCheck = UpdateCheck()
         updateCheck.initiateHandshake(this)
         val crashMessage = intent?.getStringExtra("message") ?: return finish()
