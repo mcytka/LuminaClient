@@ -30,6 +30,8 @@ class LaunchActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        com.google.firebase.FirebaseApp.initializeApp(this)
+
         val apiKey = TrackUtil.TrackApi
         if (!apiKey.isNullOrEmpty()) {
             val amplitude = Amplitude(
