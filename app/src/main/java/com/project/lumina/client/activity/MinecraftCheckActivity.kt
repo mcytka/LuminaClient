@@ -85,7 +85,6 @@ class MinecraftCheckActivity : ComponentActivity() {
             amplitude.track("Initialized Lumina")
             val updateCheck = UpdateCheck()
             updateCheck.initiateHandshake(this)
-            amplitude.track("Initialized Lumina")
             if (isMinecraftInstalled()) {
                 val verifier = HashCat.getInstance()
                 val isValid = verifier.LintHashInit(this)
