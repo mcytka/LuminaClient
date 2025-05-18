@@ -2,7 +2,7 @@ apply plugin: 'com.android.library'
 
 android {
     namespace("com.aizuzi.verificationdemo")
-    compileSdkVersion 25
+    compileSdkVersion 35
 
 
     defaultConfig {
@@ -32,4 +32,6 @@ android {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
 }
