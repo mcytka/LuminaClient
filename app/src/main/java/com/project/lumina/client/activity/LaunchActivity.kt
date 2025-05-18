@@ -30,7 +30,7 @@ class LaunchActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        com.google.firebase.FirebaseApp.initializeApp(this)
+//        com.google.firebase.FirebaseApp.initializeApp(this)
 
         val apiKey = TrackUtil.TrackApi
         if (!apiKey.isNullOrEmpty()) {
@@ -48,7 +48,7 @@ class LaunchActivity : ComponentActivity() {
         val verifier = HashCat.getInstance()
         val isValid = verifier.LintHashInit(this)
         if (isValid) {
-            FirebaseCrashlytics.getInstance().log("App started")
+//            FirebaseCrashlytics.getInstance().log("App started")
         }
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
