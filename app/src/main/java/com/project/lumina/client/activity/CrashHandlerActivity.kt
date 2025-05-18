@@ -60,6 +60,9 @@ class CrashHandlerActivity : ComponentActivity() {
             )
             amplitude.track("Lumina Crashed")
         }
+//        else {
+//            FirebaseCrashlytics.getInstance().log("Amplitude API key missing, analytics disabled")
+//        }
         val updateCheck = UpdateCheck()
         updateCheck.initiateHandshake(this)
         val crashMessage = intent?.getStringExtra("message") ?: return finish()
