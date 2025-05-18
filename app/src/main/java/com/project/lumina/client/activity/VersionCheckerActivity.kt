@@ -136,19 +136,27 @@ class VersionCheckerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val amplitude = Amplitude(
-            Configuration(
-                apiKey = TrackUtil.TrackApi,
-                context = applicationContext,
-                defaultTracking = DefaultTrackingOptions.ALL,
+        val apiKey = TrackUtil.TrackApi
+        if (!apiKey.isNullOrEmpty()) {
+            val amplitude = Amplitude(
+                Configuration(
+                    apiKey = apiKey,
+                    context = applicationContext,
+                    defaultTracking = DefaultTrackingOptions.ALL,
+                )
             )
-        )
 
-        amplitude.track("Version Checker Initialized")
-        val viewModel: VersionCheckerViewModel by viewModels()
-        viewModel.loadVersionConfig(this, configUrl)
-        val updateCheck = UpdateCheck()
-        updateCheck.initiateHandshake(this)
+            amplitude.track("Version Checker Initialized")
+            val viewModel: VersionCheckerViewModel by viewModels()
+            viewModel.loadVersionConfig(this, configUrl)
+            val updateCheck = UpdateCheck()
+            updateCheck.initiateHandshake(this)
+        } else {
+            val viewModel: VersionCheckerViewModel by viewModels()
+            viewModel.loadVersionConfig(this, configUrl)
+            val updateCheck = UpdateCheck()
+            updateCheck.initiateHandshake(this)
+        }
         setContent {
             LuminaClientTheme {
                 Surface(
