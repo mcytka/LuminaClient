@@ -35,6 +35,7 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
         val attackPacket = InteractPacket()
         val playerId = session.localPlayer.runtimeEntityId
         attackPacket.runtimeEntityId = playerId // Атакующий
+
         // Проверяем доступное поле для цели
         if (InteractPacket::class.java.declaredFields.any { it.name == "targetEntityId" }) {
             val targetField = InteractPacket::class.java.getDeclaredField("targetEntityId")
@@ -45,7 +46,15 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
             targetField.isAccessible = true
             targetField.set(attackPacket, playerId) // Устанавливаем цель (себя)
         }
-        attackPacket.action = 1 // Используем числовое значение для InteractAction.ATTACK
+
+        // Проверяем доступное поле для action и устанавливаем значение через рефлексию
+        if (InteractPacket::class.java.declaredFields.any { it.name == "action" }) {
+            val actionField = InteractPacket::class.java.getDeclaredField("action")
+            actionField.isAccessible = true
+            // Устанавливаем значение 1 (соответствует ATTACK)
+            actionField.set(attackPacket, 1) // Используем числовое значение, так как перечисление недоступно
+        }
+
         session.serverBound(attackPacket)
 
         session.displayClientMessage("§l§b[SelfAttackTest] §r§aSent self-attack packet at ${System.currentTimeMillis()}!")
