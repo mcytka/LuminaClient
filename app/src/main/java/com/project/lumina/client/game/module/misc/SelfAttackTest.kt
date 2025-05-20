@@ -4,7 +4,6 @@ import com.project.lumina.client.R
 import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.game.InterceptablePacket
-import org.cloudburstmc.protocol.bedrock.packet.InteractPacket
 
 class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : Element(
     name = "SelfAttackTest",
@@ -13,32 +12,21 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
     displayNameResId = R.string.module_selfattacktest_display_name
 ) {
 
-    private val activationInterval by intValue("Activation Interval", 1000, 500..2000)
+    private val activationInterval by intValue("Activation Interval", 1000, 40..2000)
     private var lastActivationTime: Long = 0
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
         if (!isEnabled) return
 
-        // Логируем только InteractPacket, отправляемые другими модулями (например, DamageFly)
-        if (interceptablePacket.packet is InteractPacket) {
-            val packet = interceptablePacket.packet as InteractPacket
-            val logMessage = buildString {
-                append("§l§b[SelfAttackTest-Logger] §r§aInteractPacket logged:\n")
-                append("  runtimeEntityId: ${packet.runtimeEntityId}\n")
-                if (InteractPacket::class.java.declaredFields.any { it.name == "targetEntityId" }) {
-                    val targetField = InteractPacket::class.java.getDeclaredField("targetEntityId")
-                    targetField.isAccessible = true
-                    append("  targetEntityId: ${targetField.get(packet)}\n")
-                }
-                if (InteractPacket::class.java.declaredFields.any { it.name == "action" }) {
-                    val actionField = InteractPacket::class.java.getDeclaredField("action")
-                    actionField.isAccessible = true
-                    append("  action: ${actionField.get(packet)}\n")
-                }
-                append("  Timestamp: ${System.currentTimeMillis()}")
-            }
-            session.displayClientMessage(logMessage)
+        // Логируем все исходящие пакеты
+        val packet = interceptablePacket.packet
+        val logMessage = buildString {
+            append("§l§b[SelfAttackTest-Logger] §r§aPacket logged:\n")
+            append("  Packet Type: ${packet.javaClass.simpleName}\n")
+            append("  Packet Details: $packet\n")
+            append("  Timestamp: ${System.currentTimeMillis()}")
         }
+        session.displayClientMessage(logMessage)
 
         // Временно отключаем логику атаки
         /*
