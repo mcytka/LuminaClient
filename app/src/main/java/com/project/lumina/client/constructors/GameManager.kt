@@ -24,6 +24,7 @@ import com.project.lumina.client.game.module.world.NoClipElement
 import com.project.lumina.client.game.module.misc.PositionLoggerElement
 
 import com.project.lumina.client.game.module.misc.SessionInfoElement
+import com.project.lumina.client.game.module.misc.SelfAttackTest
 import com.project.lumina.client.game.module.misc.SpeedoMeterElement
 import com.project.lumina.client.game.module.misc.WaterMarkElement
 import com.project.lumina.client.game.module.motion.AirJumpElement
@@ -142,6 +143,7 @@ object GameManager {
                 add(SpeedoMeterElement())
                 add(SessionInfoElement())
                 add(ArrayListElement())
+                add(SelfAttackTest())
                 add(WaterMarkElement())
                 add(MinimapElement())
                
