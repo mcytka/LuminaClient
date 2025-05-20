@@ -120,6 +120,7 @@
     <string name="module_opfightbot_display_name">AutoFight</string>
     <string name="module_followbot_display_name">Follow Bot</string>
     <string name="module_velocity_display_name">Velocity</string>
+    <string name="module_selfattacktest_display_name">SelfAttackTest</string>
     <string name="module_antikick_display_name">AntiKick</string>
     <string name="module_quickattack_display_name">Quick Attack</string>
     <string name="module_world_debugger_display_name">World Debugger</string>
