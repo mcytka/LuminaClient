@@ -4,7 +4,7 @@ import com.project.lumina.client.R
 import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.game.InterceptablePacket
-import org.cloudburstmc.protocol.bedrock.data.InteractAction
+import org.cloudburstmc.protocol.bedrock.data.InteractAction // Правильный импорт
 import org.cloudburstmc.protocol.bedrock.packet.InteractPacket
 import org.cloudburstmc.protocol.bedrock.packet.TextPacket
 
@@ -32,10 +32,10 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
                 val args = message.split(" ").drop(1)
                 when {
                     args.contains("toggle") -> {
-                        state = !state
-                        val status = if (state) "enabled" else "disabled"
+                        enabled = !isEnabled // Заменяем state на isEnabled
+                        val status = if (isEnabled) "enabled" else "disabled"
                         session.displayClientMessage("§l§b[SelfAttackTest] §r§aSelfAttackTest $status")
-                        if (!state) {
+                        if (!isEnabled) {
                             lastActivationTime = 0
                         }
                     }
@@ -47,7 +47,7 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
         }
 
         // Автоматическая активация атаки на себя
-        if (isEnabled && state) {
+        if (isEnabled) { // Заменяем state на isEnabled
             val currentTime = System.currentTimeMillis()
             if (currentTime - lastActivationTime >= activationInterval) {
                 performSelfAttack()
@@ -61,7 +61,7 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
         val attackPacket = InteractPacket()
         val playerId = session.localPlayer.runtimeEntityId
         attackPacket.runtimeEntityId = playerId // Атакующий
-        attackPacket.targetRuntimeEntityId = playerId // Цель (себя)
+        attackPacket.setTargetRuntimeEntityId(playerId) // Цель (себя), используем метод вместо прямого доступа
         attackPacket.action = InteractAction.ATTACK
         session.serverBound(attackPacket)
 
