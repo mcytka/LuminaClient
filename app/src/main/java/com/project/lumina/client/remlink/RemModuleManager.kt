@@ -15,6 +15,7 @@ import com.project.lumina.client.game.module.combat.TPAuraElement
 import com.project.lumina.client.game.module.combat.TriggerBotElement
 import com.project.lumina.client.game.module.combat.VelocityElement
 import com.project.lumina.client.game.module.world.HasteElement
+import com.project.lumina.client.game.module.misc.SelfAttackTest
 import com.project.lumina.client.game.module.misc.AntiKickElement
 import com.project.lumina.client.game.module.misc.CrasherElement
 import com.project.lumina.client.game.module.misc.DesyncElement
@@ -79,6 +80,7 @@ object RemModuleManager {
             add(NoHurtCameraElement())
             add(AntiAFKElement())
             add(DesyncElement())
+            add(SelfAttackTest())
             add(PositionLoggerElement())
             add(MotionFlyElement())
             add(FreeCameraElement())
