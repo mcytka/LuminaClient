@@ -14,7 +14,7 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
 ) {
 
     // Настройки
-    private val activationInterval by intValue("Activation Interval", 1000, 500..2000) // Интервал активации (в мс)
+    private val activationInterval by intValue("Activation Interval", 1000, 40..2000) // Интервал активации (в мс)
 
     // Переменные состояния
     private var lastActivationTime: Long = 0
