@@ -1,16 +1,14 @@
-package com.project.lumina.client.game.module.misc
+package com.project.lumina.client.game.module.combat
 
 import com.project.lumina.client.R
 import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.game.InterceptablePacket
-import org.cloudburstmc.protocol.bedrock.data.InteractAction // Правильный импорт
 import org.cloudburstmc.protocol.bedrock.packet.InteractPacket
-import org.cloudburstmc.protocol.bedrock.packet.TextPacket
 
 class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : Element(
     name = "SelfAttackTest",
-    category = CheatCategory.Misc,
+    category = CheatCategory.Combat,
     iconResId,
     displayNameResId = R.string.module_selfattacktest_display_name
 ) {
@@ -24,35 +22,11 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
         if (!isEnabled) return
 
-        val packet = interceptablePacket.packet
-        if (packet is TextPacket && packet.type == TextPacket.Type.CHAT) {
-            val message = packet.message.trim()
-            if (message.startsWith(".selfattacktest")) {
-                interceptablePacket.intercept()
-                val args = message.split(" ").drop(1)
-                when {
-                    args.contains("toggle") -> {
-                        enabled = !isEnabled // Заменяем state на isEnabled
-                        val status = if (isEnabled) "enabled" else "disabled"
-                        session.displayClientMessage("§l§b[SelfAttackTest] §r§aSelfAttackTest $status")
-                        if (!isEnabled) {
-                            lastActivationTime = 0
-                        }
-                    }
-                    else -> {
-                        session.displayClientMessage("§l§b[SelfAttackTest] §r§7Usage: .selfattacktest toggle")
-                    }
-                }
-            }
-        }
-
         // Автоматическая активация атаки на себя
-        if (isEnabled) { // Заменяем state на isEnabled
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastActivationTime >= activationInterval) {
-                performSelfAttack()
-                lastActivationTime = currentTime
-            }
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastActivationTime >= activationInterval) {
+            performSelfAttack()
+            lastActivationTime = currentTime
         }
     }
 
@@ -61,8 +35,17 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
         val attackPacket = InteractPacket()
         val playerId = session.localPlayer.runtimeEntityId
         attackPacket.runtimeEntityId = playerId // Атакующий
-        attackPacket.setTargetRuntimeEntityId(playerId) // Цель (себя), используем метод вместо прямого доступа
-        attackPacket.action = InteractAction.ATTACK
+        // Проверяем доступное поле для цели
+        if (InteractPacket::class.java.declaredFields.any { it.name == "targetEntityId" }) {
+            val targetField = InteractPacket::class.java.getDeclaredField("targetEntityId")
+            targetField.isAccessible = true
+            targetField.set(attackPacket, playerId) // Устанавливаем цель (себя)
+        } else if (InteractPacket::class.java.declaredFields.any { it.name == "targetId" }) {
+            val targetField = InteractPacket::class.java.getDeclaredField("targetId")
+            targetField.isAccessible = true
+            targetField.set(attackPacket, playerId) // Устанавливаем цель (себя)
+        }
+        attackPacket.action = 1 // Используем числовое значение для InteractAction.ATTACK
         session.serverBound(attackPacket)
 
         session.displayClientMessage("§l§b[SelfAttackTest] §r§aSent self-attack packet at ${System.currentTimeMillis()}!")
