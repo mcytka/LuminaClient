@@ -1,4 +1,4 @@
-package com.project.lumina.client.game.module.combat
+package com.project.lumina.client.game.module.misc
 
 import com.project.lumina.client.R
 import com.project.lumina.client.constructors.Element
@@ -8,7 +8,7 @@ import org.cloudburstmc.protocol.bedrock.packet.InteractPacket
 
 class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : Element(
     name = "SelfAttackTest",
-    category = CheatCategory.Combat,
+    category = CheatCategory.Misc,
     iconResId,
     displayNameResId = R.string.module_selfattacktest_display_name
 ) {
