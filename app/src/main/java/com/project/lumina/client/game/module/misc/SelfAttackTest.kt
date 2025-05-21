@@ -24,7 +24,7 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
 
         val packet = interceptablePacket.packet
 
-        // Логируем только пакеты, которые могут быть связаны с нанесением урона
+        // Логируем только пакеты, связанные с движением и уроном
         when (packet) {
             is InteractPacket -> {
                 val logMessage = buildString {
@@ -59,6 +59,8 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
                     append("  runtimeEntityId: ${packet.runtimeEntityId}\n")
                     append("  position: ${packet.position}\n")
                     append("  onGround: ${packet.isOnGround}\n")
+                    append("  mode: ${packet.mode}\n")
+                    append("  rotation: ${packet.rotation}\n")
                     append("  Timestamp: ${System.currentTimeMillis()}")
                 }
                 session.displayClientMessage(logMessage)
@@ -67,7 +69,7 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
                 val logMessage = buildString {
                     append("§l§b[SelfAttackTest-Logger] §r§aEntityEventPacket logged:\n")
                     append("  runtimeEntityId: ${packet.runtimeEntityId}\n")
-                    append("  type: ${packet.type?.name ?: "null"}\n") // Используем type
+                    append("  type: ${packet.type?.name ?: "null"}\n")
                     append("  data: ${packet.data}\n")
                     append("  Timestamp: ${System.currentTimeMillis()}")
                 }
