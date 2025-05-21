@@ -4,9 +4,7 @@ import com.project.lumina.client.R
 import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.game.InterceptablePacket
-import org.cloudburstmc.protocol.bedrock.packet.EntityEventPacket
 import org.cloudburstmc.protocol.bedrock.packet.InteractPacket
-import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerActionPacket
 
 class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : Element(
@@ -24,11 +22,11 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
 
         val packet = interceptablePacket.packet
 
-        // Логируем только пакеты, связанные с движением и уроном
+        // Логируем только исходящие пакеты, связанные с атакой или действиями
         when (packet) {
             is InteractPacket -> {
                 val logMessage = buildString {
-                    append("§l§b[SelfAttackTest-Logger] §r§aInteractPacket logged:\n")
+                    append("§l§b[SelfAttackTest-Logger] §r§aInteractPacket (client -> server) logged:\n")
                     append("  runtimeEntityId: ${packet.runtimeEntityId}\n")
                     if (InteractPacket::class.java.declaredFields.any { it.name == "targetEntityId" }) {
                         val targetField = InteractPacket::class.java.getDeclaredField("targetEntityId")
@@ -46,31 +44,9 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
             }
             is PlayerActionPacket -> {
                 val logMessage = buildString {
-                    append("§l§b[SelfAttackTest-Logger] §r§aPlayerActionPacket logged:\n")
+                    append("§l§b[SelfAttackTest-Logger] §r§aPlayerActionPacket (client -> server) logged:\n")
                     append("  runtimeEntityId: ${packet.runtimeEntityId}\n")
                     append("  action: ${packet.action}\n")
-                    append("  Timestamp: ${System.currentTimeMillis()}")
-                }
-                session.displayClientMessage(logMessage)
-            }
-            is MovePlayerPacket -> {
-                val logMessage = buildString {
-                    append("§l§b[SelfAttackTest-Logger] §r§aMovePlayerPacket logged:\n")
-                    append("  runtimeEntityId: ${packet.runtimeEntityId}\n")
-                    append("  position: ${packet.position}\n")
-                    append("  onGround: ${packet.isOnGround}\n")
-                    append("  mode: ${packet.mode}\n")
-                    append("  rotation: ${packet.rotation}\n")
-                    append("  Timestamp: ${System.currentTimeMillis()}")
-                }
-                session.displayClientMessage(logMessage)
-            }
-            is EntityEventPacket -> {
-                val logMessage = buildString {
-                    append("§l§b[SelfAttackTest-Logger] §r§aEntityEventPacket logged:\n")
-                    append("  runtimeEntityId: ${packet.runtimeEntityId}\n")
-                    append("  type: ${packet.type?.name ?: "null"}\n")
-                    append("  data: ${packet.data}\n")
                     append("  Timestamp: ${System.currentTimeMillis()}")
                 }
                 session.displayClientMessage(logMessage)
