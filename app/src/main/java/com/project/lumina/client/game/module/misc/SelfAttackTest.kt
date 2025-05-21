@@ -67,7 +67,8 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
                 val logMessage = buildString {
                     append("§l§b[SelfAttackTest-Logger] §r§aEntityEventPacket logged:\n")
                     append("  runtimeEntityId: ${packet.runtimeEntityId}\n")
-                    append("  eventId: ${packet.eventId}\n") // Исправлено с event на eventId
+                    append("  type: ${packet.type?.name ?: "null"}\n") // Используем type
+                    append("  data: ${packet.data}\n")
                     append("  Timestamp: ${System.currentTimeMillis()}")
                 }
                 session.displayClientMessage(logMessage)
