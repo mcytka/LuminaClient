@@ -16,7 +16,7 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
     displayNameResId = R.string.module_selfattacktest_display_name
 ) {
 
-    private val activationInterval by intValue("Activation Interval", 1000, 300..2000)
+    private val activationInterval by intValue("Activation Interval", 1000, 500..2000)
     private var lastActivationTime: Long = 0
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
@@ -67,7 +67,7 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
                 val logMessage = buildString {
                     append("§l§b[SelfAttackTest-Logger] §r§aEntityEventPacket logged:\n")
                     append("  runtimeEntityId: ${packet.runtimeEntityId}\n")
-                    append("  eventId: ${packet.event}\n")
+                    append("  eventId: ${packet.eventId}\n") // Исправлено с event на eventId
                     append("  Timestamp: ${System.currentTimeMillis()}")
                 }
                 session.displayClientMessage(logMessage)
