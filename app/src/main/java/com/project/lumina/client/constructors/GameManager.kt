@@ -34,6 +34,7 @@ import com.project.lumina.client.game.module.motion.BhopElement
 import com.project.lumina.client.game.module.combat.DamageBoostElement
 import com.project.lumina.client.game.module.combat.HitboxElement
 import com.project.lumina.client.game.module.motion.FlyElement
+import com.project.lumina.client.game.module.motion.TapTeleportElement
 import com.project.lumina.client.game.module.world.FollowBotElement
 import com.project.lumina.client.game.module.motion.FullStopElement
 import com.project.lumina.client.game.module.motion.GlideElement
@@ -83,6 +84,7 @@ object GameManager {
     init {
         with(_elements) {
             add(FlyElement())
+            add(TapTeleportElement())
             add(ZoomElement())
             add(AirJumpElement())
             add(AutoWalkElement())
