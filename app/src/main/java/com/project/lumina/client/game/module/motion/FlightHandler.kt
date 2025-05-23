@@ -8,6 +8,7 @@ import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import org.cloudburstmc.protocol.bedrock.packet.SetEntityMotionPacket
+import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData // <-- Добавлен импорт
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.PI
@@ -67,7 +68,7 @@ object FlightHandler : LuminaRelayPacketListener {
     fun stopFlight() {
         isFlyingActive = false
         // Приземляем игрока, если был активен полет, отправляя пакет движения с isOnGround = true
-        session?.localPlayer?.let { player ->
+        session?.localPlayer?.let { player -> // <-- Использован let для безопасного доступа
             val landingPosition = Vector3f.from(player.vec3Position.x, player.vec3Position.y, player.vec3Position.z)
             val movePacket = MovePlayerPacket().apply {
                 runtimeEntityId = player.uniqueEntityId
@@ -104,12 +105,12 @@ object FlightHandler : LuminaRelayPacketListener {
 
         // Отправляем подделанный MovePlayerPacket на сервер
         val spoofedMovePacket = MovePlayerPacket().apply {
-            runtimeEntityId = localPlayer.uniqueEntityId
+            runtimeEntityId = localPlayer.uniqueEntityId // <-- Доступ через localPlayer
             position = currentPosition 
             rotation = inputPacket.rotation ?: Vector3f.ZERO 
             mode = MovePlayerPacket.Mode.NORMAL
             isOnGround = shouldSpoofOnGround() 
-            tick = inputPacket.tick
+            tick = inputPacket.tick // <-- Доступ через inputPacket
         }
         session?.serverBound(spoofedMovePacket) 
     }
@@ -169,8 +170,8 @@ object FlightHandler : LuminaRelayPacketListener {
         
         // Добавляем случайный небольшой Y-оффсет для имитации "шага" при имитации onGround
         if (tickCounter % GROUND_SPOOF_INTERVAL == 0L || isVerticallyStable) {
-            val yOffset = Random.nextDouble(-GROUND_SPOOF_Y_OFFSET.toDouble(), GROUND_SPOOF_Y_OFFSET.toDouble()).toFloat()
-            session?.localPlayer?.let { player ->
+            session?.localPlayer?.let { player -> // <-- Использован let для безопасного доступа
+                val yOffset = Random.nextDouble(-GROUND_SPOOF_Y_OFFSET.toDouble(), GROUND_SPOOF_Y_OFFSET.toDouble()).toFloat()
                 player.vec3Position = Vector3f.from(player.vec3Position.x, player.vec3Position.y + yOffset, player.vec3Position.z)
             }
             return true
@@ -191,11 +192,8 @@ object FlightHandler : LuminaRelayPacketListener {
         session?.localPlayer?.let { localPlayer ->
             // Если это пакет движения игрока от сервера (например, телепорт или коррекция)
             if (packet is MovePlayerPacket && packet.runtimeEntityId == localPlayer.runtimeEntityId && isFlyingActive) {
-                // Это сервер пытается скорректировать нашу позицию.
-                // Для стелса: мы можем либо полностью игнорировать (как сейчас), либо
-                // скорректировать нашу внутреннюю позицию, но затем немедленно отправить свой MovePlayerPacket обратно.
-                // Давайте попробуем скорректировать внутреннюю позицию, но перехватить серверный пакет.
-                localPlayer.vec3Position = packet.position // Принимаем позицию от сервера временно
+                // Принимаем позицию от сервера временно, чтобы не игнорировать полностью
+                localPlayer.vec3Position = packet.position 
                 // Затем в handlePlayerInput мы отправим нашу желаемую позицию обратно
                 return true 
             }
