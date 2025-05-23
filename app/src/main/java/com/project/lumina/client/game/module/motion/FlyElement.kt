@@ -9,6 +9,7 @@ import org.cloudburstmc.protocol.bedrock.data.Ability
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.RequestAbilityPacket
+import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import kotlin.math.cos
 import kotlin.math.PI
 import kotlin.math.sin
