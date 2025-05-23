@@ -50,7 +50,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
     private fun createUpdateAbilitiesPacket(flySpeedValue: Float): UpdateAbilitiesPacket {
         return UpdateAbilitiesPacket().apply {
             playerPermission = PlayerPermission.MEMBER // Default permission for creative mode flight
-            commandPermission = CommandPermission.NORMAL // Default permission for creative mode flight
+            commandPermission = CommandPermission.ANY // Default permission for creative mode flight
             abilityLayers.add(AbilityLayer().apply {
                 layerType = AbilityLayer.Type.BASE
                 // Only include necessary abilities for creative flight
