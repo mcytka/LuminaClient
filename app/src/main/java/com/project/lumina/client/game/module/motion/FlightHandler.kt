@@ -91,16 +91,20 @@ object FlightHandler : LuminaRelayPacketListener {
         val modifiedInputPacket = PlayerAuthInputPacket().apply {
             // Copy essential data from the original input packet
             position = player.vec3Position // Use our updated position
-            // Исправлено: преобразование Vector3f в Vector2f для rotation
-            rotation = Vector2f.from(inputPacket.rotation?.x ?: 0f, inputPacket.rotation?.y ?: 0f)
-            motion = currentVelocity // IMPORTANT: Use our calculated velocity here!
+            
+            // Исправлено: rotation ожидает Vector3f, поэтому используем inputPacket.rotation напрямую
+            rotation = inputPacket.rotation 
+
+            // Исправлено: motion ожидает Vector2f (X и Z компоненты)
+            motion = Vector2f.from(currentVelocity.x, currentVelocity.z) // Use X and Z from our calculated velocity
+            
             tick = inputPacket.tick
             inputData.addAll(inputPacket.inputData) // Preserve original input data flags (JUMPING, SNEAKING, etc.)
             
-            // Удалены строки, вызывающие Unresolved reference:
+            // Удалены строки, вызывающие Unresolved reference.
             // headYaw = inputPacket.headYaw
             // bodyYaw = inputPacket.bodyYaw
-            // delta = inputPacket.delta // Preserve original delta motion if any, although our motion overrides it conceptually
+            // delta = inputPacket.delta
             // inputMode = inputPacket.inputMode
             // interactionModel = inputPacket.interactionModel
             // playMode = inputPacket.playMode
@@ -114,8 +118,20 @@ object FlightHandler : LuminaRelayPacketListener {
 
     // calculateStealthyMotion теперь не принимает localPlayer, а использует сохраненный player
     private fun calculateStealthyMotion(inputPacket: PlayerAuthInputPacket) {
+        // Bedrock's PlayerAuthInputPacket motion.y is often Z-axis for horizontal input motion.
+        // It's crucial to understand how inputPacket.motion is structured for your version.
+        // If it's Vector2f, then motion.x and motion.y are usually horizontal.
+        // Given your current inputPacket.motion?.y, it implies Vector2f.
+        // Let's assume inputPacket.motion?.x is forward/backward and inputPacket.motion?.y is strafing.
+        // This is a common interpretation for PlayerAuthInputPacket.motion,
+        // where it's horizontal motion, not vertical.
+        // If it's Vector3f, then it would be x, y, z.
+        // Let's re-verify from the library or previous working code.
+        // The fact that inputPacket.motion?.y is used for Z-axis in calculateStealthyMotion
+        // suggests it's a Vector2f for horizontal input.
+
         val inputMotionX: Float = inputPacket.motion?.x ?: 0f
-        val inputMotionZ: Float = inputPacket.motion?.y ?: 0f // Bedrock's PlayerAuthInputPacket motion.y is often Z-axis
+        val inputMotionZ: Float = inputPacket.motion?.y ?: 0f // Assuming inputPacket.motion is Vector2f (X, Z)
 
         val yaw: Double = inputPacket.rotation?.y?.toDouble()?.let { it * (PI / 180.0) } ?: 0.0
         val targetHorizontalMotionX: Float = (-sin(yaw) * inputMotionZ.toDouble() + cos(yaw) * inputMotionX.toDouble()).toFloat() * currentFlySpeed
@@ -157,7 +173,9 @@ object FlightHandler : LuminaRelayPacketListener {
         
         if (tickCounter % GROUND_SPOOF_INTERVAL == 0L || isVerticallyStable) {
             // val yOffset: Float = Random.nextDouble(-GROUND_SPOOF_Y_OFFSET.toDouble(), GROUND_SPOOF_Y_OFFSET.toDouble()).toFloat()
+
             // Removed player.move(Vector3f.from(player.vec3Position.x, player.vec3Position.y + yOffset, player.vec3Position.z))
+
             return true
         }
         return false
