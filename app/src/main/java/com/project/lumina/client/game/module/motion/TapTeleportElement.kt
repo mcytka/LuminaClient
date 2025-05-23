@@ -51,7 +51,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
                             // Teleport under the block
                             teleportToY = blockPosition.y.toFloat() - playerEyeHeight - 0.1f
                         } else {
-                            // Otherwise, teleport on top of the block
+                            // Otherwise, always teleport on top of the block for side taps
                             teleportToY = blockPosition.y.toFloat() + 1.0f
                         }
                     }
