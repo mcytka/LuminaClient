@@ -6,14 +6,18 @@ import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.game.InterceptablePacket
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.protocol.bedrock.data.Ability
+import org.cloudburstmc.protocol.bedrock.data.AbilityLayer
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
+import org.cloudburstmc.protocol.bedrock.data.PlayerPermission
+import org.cloudburstmc.protocol.bedrock.data.command.CommandPermission
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
-import org.cloudburstmc.protocol.bedrock.packet.RequestAbilityPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
+import org.cloudburstmc.protocol.bedrock.packet.RequestAbilityPacket
+import org.cloudburstmc.protocol.bedrock.packet.SetEntityMotionPacket
+import org.cloudburstmc.protocol.bedrock.packet.UpdateAbilitiesPacket
 import kotlin.math.cos
 import kotlin.math.PI
 import kotlin.math.sin
-import kotlin.random.Random
 
 class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
     name = "Fly",
@@ -24,127 +28,154 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
 
     private var flySpeed by floatValue("Speed", 0.3f, 0.05f..1.0f)
     private var verticalSpeed by floatValue("Vertical Speed", 0.3f, 0.1f..1.0f)
-    private var isFlyingActive = false
-
-    override fun onEnabled() {
-        super.onEnabled()
-        isFlyingActive = false
-    }
-
-    override fun onDisabled() {
-        super.onDisabled()
-        isFlyingActive = false
-        // При отключении модуля, просто перестаем контролировать движение.
-        // Игрок начнет падать по естественной гравитации игры.
-    }
+    private var canFly = false
+    private var tickCounter = 0
+    private var lastPosition: Vector3f? = null
 
     private fun toRadians(degrees: Double): Double = degrees * (PI / 180.0)
 
+    private val enableFlyAbilitiesPacket = UpdateAbilitiesPacket().apply {
+        playerPermission = PlayerPermission.OPERATOR
+        commandPermission = CommandPermission.OWNER
+        abilityLayers.add(AbilityLayer().apply {
+            layerType = AbilityLayer.Type.BASE
+            abilitiesSet.addAll(Ability.entries.toTypedArray())
+            abilityValues.addAll(
+                listOf(
+                    Ability.BUILD,
+                    Ability.MINE,
+                    Ability.DOORS_AND_SWITCHES,
+                    Ability.OPEN_CONTAINERS,
+                    Ability.ATTACK_PLAYERS,
+                    Ability.ATTACK_MOBS,
+                    Ability.OPERATOR_COMMANDS,
+                    Ability.MAY_FLY,
+                    Ability.FLY_SPEED,
+                    Ability.WALK_SPEED
+                )
+            )
+            walkSpeed = 0.1f
+            flySpeed = this@FlyElement.flySpeed
+        })
+    }
+
+    private val disableFlyAbilitiesPacket = UpdateAbilitiesPacket().apply {
+        playerPermission = PlayerPermission.OPERATOR
+        commandPermission = CommandPermission.OWNER
+        abilityLayers.add(AbilityLayer().apply {
+            layerType = AbilityLayer.Type.BASE
+            abilitiesSet.addAll(Ability.entries.toTypedArray())
+            abilityValues.addAll(
+                listOf(
+                    Ability.BUILD,
+                    Ability.MINE,
+                    Ability.DOORS_AND_SWITCHES,
+                    Ability.OPEN_CONTAINERS,
+                    Ability.ATTACK_PLAYERS,
+                    Ability.ATTACK_MOBS,
+                    Ability.OPERATOR_COMMANDS,
+                    Ability.WALK_SPEED
+                )
+            )
+            walkSpeed = 0.1f
+            flySpeed = 0.0f
+        })
+    }
+
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
         val packet = interceptablePacket.packet
-        val localPlayer = session.localPlayer ?: return
 
-        // Перехватываем RequestAbilityPacket, если клиент пытается запросить FLYING способность.
-        // Это предотвратит отправку запроса на сервер, тем самым скрывая наш полет.
         if (packet is RequestAbilityPacket && packet.ability == Ability.FLYING) {
             interceptablePacket.intercept()
             return
         }
 
+        if (packet is UpdateAbilitiesPacket) {
+            interceptablePacket.intercept()
+            return
+        }
+
         if (packet is PlayerAuthInputPacket) {
+
+            if (!canFly && isEnabled) {
+                enableFlyAbilitiesPacket.uniqueEntityId = session.localPlayer.uniqueEntityId
+                session.clientBound(enableFlyAbilitiesPacket)
+                canFly = true
+            } else if (canFly && !isEnabled) {
+                disableFlyAbilitiesPacket.uniqueEntityId = session.localPlayer.uniqueEntityId
+                session.clientBound(disableFlyAbilitiesPacket)
+                canFly = false
+            }
+
             if (isEnabled) {
-                // Перехватываем START_FLYING/STOP_FLYING, если они все еще приходят от клиента
-                // Это предотвращает отправку нежелательных флагов на сервер.
                 if (packet.inputData.contains(PlayerAuthInputData.START_FLYING) ||
                     packet.inputData.contains(PlayerAuthInputData.STOP_FLYING)) {
                     interceptablePacket.intercept()
                 }
 
-                // Определяем, пытается ли игрок двигаться (вверх, вниз или по горизонтали)
-                val tryingToFlyUp = packet.inputData.contains(PlayerAuthInputData.JUMPING)
-                val tryingToFlyDown = packet.inputData.contains(PlayerAuthInputData.SNEAKING)
-                val tryingToMoveHorizontal = packet.inputData.contains(PlayerAuthInputData.FORWARD) ||
-                                              packet.inputData.contains(PlayerAuthInputData.BACK) ||
-                                              packet.inputData.contains(PlayerAuthInputData.LEFT) ||
-                                              packet.inputData.contains(PlayerAuthInputData.RIGHT)
+                val isFlying = packet.inputData.contains(PlayerAuthInputData.JUMPING) ||
+                        packet.inputData.contains(PlayerAuthInputData.SNEAKING)
 
-                // Активируем полет, если есть какое-либо движение или если игрок уже в воздухе (чтобы не упасть сразу после активации)
-                isFlyingActive = tryingToFlyUp || tryingToFlyDown || tryingToMoveHorizontal || !localPlayer.isOnGround
-
-                var motionX = 0.0f
-                var motionY = 0.0f
-                var motionZ = 0.0f
-
-                val currentYaw = packet.rotation?.y?.toDouble() ?: 0.0
-                val yawRadians = toRadians(currentYaw)
-
-                // Расчет горизонтального движения
-                val forward = packet.inputData.contains(PlayerAuthInputData.FORWARD)
-                val backward = packet.inputData.contains(PlayerAuthInputData.BACK)
-                val left = packet.inputData.contains(PlayerAuthInputData.LEFT)
-                val right = packet.inputData.contains(PlayerAuthInputData.RIGHT)
-
-                if (forward || backward || left || right) {
-                    var moveStrafe = 0.0f
-                    var moveForward = 0.0f
-
-                    if (forward) moveForward++
-                    if (backward) moveForward--
-                    if (left) moveStrafe++
-                    if (right) moveStrafe--
-
-                    val hypotenuse = StrictMath.sqrt((moveStrafe * moveStrafe + moveForward * moveForward).toDouble())
-                    var multiplier = flySpeed.toDouble()
-                    if (hypotenuse >= 0.01) {
-                        multiplier /= hypotenuse
+                var verticalMotion = 0f
+                if (isFlying) {
+                    if (packet.inputData.contains(PlayerAuthInputData.JUMPING)) {
+                        verticalMotion = verticalSpeed
+                    } else if (packet.inputData.contains(PlayerAuthInputData.SNEAKING)) {
+                        verticalMotion = -verticalSpeed
                     }
-
-                    // Применяем горизонтальное движение с учетом поворота головы
-                    motionX = (-(moveStrafe * sin(yawRadians) - moveForward * cos(yawRadians)) * multiplier).toFloat()
-                    motionZ = (-(moveStrafe * cos(yawRadians) + moveForward * sin(yawRadians)) * multiplier).toFloat()
                 }
 
-                // Расчет вертикального движения
-                if (tryingToFlyUp) {
-                    motionY = verticalSpeed
-                } else if (tryingToFlyDown) {
-                    motionY = -verticalSpeed
+                val inputMotion = packet.motion?.let {
+                    Vector3f.from(it.x, 0f, it.y)
+                } ?: Vector3f.ZERO
+
+                val yaw = packet.rotation?.y?.toDouble()?.let { toRadians(it) } ?: 0.0
+                val horizontalMotion = if (inputMotion != Vector3f.ZERO && isFlying) {
+                    val speed = flySpeed.toDouble()
+                    Vector3f.from(
+                        ((-sin(yaw) * inputMotion.z.toDouble() + cos(yaw) * inputMotion.x.toDouble()) * speed).toFloat(),
+                        0f,
+                        ((cos(yaw) * inputMotion.z.toDouble() + sin(yaw) * inputMotion.x.toDouble()) * speed).toFloat()
+                    )
                 } else {
-                    // Имитация ванильной гравитации, если игрок не двигается вертикально и находится в воздухе
-                    if (isFlyingActive) {
-                        motionY = -0.098f // Примерное значение ванильной гравитации
-                    }
+                    Vector3f.ZERO
                 }
 
-                // Добавление небольшой случайности для обхода античита и имитации "человеческого" движения
-                motionX += Random.nextDouble(-0.0001, 0.0001).toFloat()
-                motionY += Random.nextDouble(-0.0001, 0.0001).toFloat()
-                motionZ += Random.nextDouble(-0.0001, 0.0001).toFloat()
-
-                // Вычисляем новую позицию на основе текущей и рассчитанного движения
-                val currentPosition = localPlayer.position
-                val newPosition = Vector3f.from(
-                    currentPosition.x + motionX,
-                    currentPosition.y + motionY,
-                    currentPosition.z + motionZ
+                val combinedMotion = Vector3f.from(
+                    horizontalMotion.x,
+                    verticalMotion,
+                    horizontalMotion.z
                 )
 
-                // Отправляем MovePlayerPacket для обновления позиции игрока
-                val movePacket = MovePlayerPacket().apply {
-                    runtimeEntityId = localPlayer.uniqueEntityId
-                    position = newPosition
-                    rotation = packet.rotation // Используем оригинальное вращение из входного пакета
-                    mode = MovePlayerPacket.Mode.NORMAL
-                    tick = packet.tick
-                    isOnGround = false // Всегда false при полете для скрытности
+                if (isFlying && combinedMotion != Vector3f.ZERO) {
+                    val motionPacket = SetEntityMotionPacket().apply {
+                        runtimeEntityId = session.localPlayer.runtimeEntityId
+                        motion = combinedMotion
+                    }
+                    session.clientBound(motionPacket)
+                } else if (isFlying) {
+                    val stopMotionPacket = SetEntityMotionPacket().apply {
+                        runtimeEntityId = session.localPlayer.runtimeEntityId
+                        motion = Vector3f.ZERO
+                    }
+                    session.clientBound(stopMotionPacket)
                 }
-                session.serverBound(movePacket)
 
-                // Перехватываем оригинальный PlayerAuthInputPacket, поскольку мы сами обрабатываем движение
-                interceptablePacket.intercept()
-            } else {
-                // Если модуль выключен, убедимся, что isFlyingActive тоже false
-                isFlyingActive = false
+                tickCounter++
+                val playerPosition = packet.position?.let { Vector3f.from(it.x, it.y, it.z) } ?: Vector3f.ZERO
+                if (playerPosition != Vector3f.ZERO && tickCounter % 2 == 0) {
+                    if (lastPosition == null || playerPosition != lastPosition) {
+                        val movePacket = MovePlayerPacket().apply {
+                            runtimeEntityId = session.localPlayer.uniqueEntityId
+                            position = playerPosition
+                            rotation = packet.rotation?.let { Vector3f.from(it.x, it.y, it.z) } ?: Vector3f.ZERO
+                            mode = MovePlayerPacket.Mode.NORMAL
+                            tick = packet.tick
+                        }
+                        session.serverBound(movePacket)
+                        lastPosition = playerPosition
+                    }
+                }
             }
         }
     }
