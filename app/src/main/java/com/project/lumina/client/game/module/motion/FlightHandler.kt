@@ -19,6 +19,7 @@ import kotlin.random.Random
 object FlightHandler : LuminaRelayPacketListener {
 
     private var currentSession: LuminaRelaySession? = null 
+    private lateinit var player: LocalPlayer // <-- Добавлено: для прямого доступа к игроку
 
     var isFlyingActive: Boolean = false
         private set
@@ -38,10 +39,12 @@ object FlightHandler : LuminaRelayPacketListener {
     private const val MAX_HORIZONTAL_SPEED: Float = 0.5f 
     private const val MAX_VERTICAL_SPEED: Float = 0.5f   
 
-    fun initialize(luminaRelaySession: LuminaRelaySession) {
+    // Изменена сигнатура initialize: теперь принимает LocalPlayer
+    fun initialize(luminaRelaySession: LuminaRelaySession, localPlayer: LocalPlayer) {
         if (this.currentSession == null || this.currentSession != luminaRelaySession) {
             this.currentSession?.listeners?.remove(this)
             this.currentSession = luminaRelaySession
+            this.player = localPlayer // <-- Сохраняем ссылку на игрока
             luminaRelaySession.listeners.add(this) 
             currentVelocity = Vector3f.ZERO
             tickCounter = 0
@@ -54,24 +57,24 @@ object FlightHandler : LuminaRelayPacketListener {
 
     fun stopFlight() {
         isFlyingActive = false
-        currentSession?.localPlayer?.let { playerInstance: LocalPlayer -> 
-            val landingPosition: Vector3f = Vector3f.from(playerInstance.vec3Position.x, playerInstance.vec3Position.y, playerInstance.vec3Position.z)
-            val movePacket = MovePlayerPacket().apply {
-                runtimeEntityId = playerInstance.uniqueEntityId
-                position = landingPosition
-                rotation = playerInstance.vec3Rotation
-                mode = MovePlayerPacket.Mode.NORMAL
-                isOnGround = true 
-                tick = playerInstance.tickExists
-            }
-            repeat(5) { 
-                currentSession?.serverBound(movePacket)
-            }
+        // Используем сохраненную ссылку на игрока
+        val landingPosition: Vector3f = Vector3f.from(player.vec3Position.x, player.vec3Position.y, player.vec3Position.z)
+        val movePacket = MovePlayerPacket().apply {
+            runtimeEntityId = player.uniqueEntityId
+            position = landingPosition
+            rotation = player.vec3Rotation
+            mode = MovePlayerPacket.Mode.NORMAL
+            isOnGround = true 
+            tick = player.tickExists
+        }
+        repeat(5) { 
+            currentSession?.serverBound(movePacket)
         }
         currentVelocity = Vector3f.ZERO 
     }
 
-    fun handlePlayerInput(playerInstance: LocalPlayer, inputPacket: PlayerAuthInputPacket, flySpeed: Float, verticalSpeed: Float) {
+    // handlePlayerInput теперь не принимает localPlayer, а использует сохраненный player
+    fun handlePlayerInput(inputPacket: PlayerAuthInputPacket, flySpeed: Float, verticalSpeed: Float) {
         currentSession ?: return 
         if (!isFlyingActive) return 
 
@@ -80,22 +83,23 @@ object FlightHandler : LuminaRelayPacketListener {
 
         tickCounter++
 
-        calculateStealthyMotion(playerInstance, inputPacket) 
+        calculateStealthyMotion(inputPacket) // <-- Передача playerInstance удалена
 
-        val currentPosition: Vector3f = playerInstance.vec3Position
+        val currentPosition: Vector3f = player.vec3Position // <-- Используем сохраненный player
 
         val spoofedMovePacket = MovePlayerPacket().apply {
-            runtimeEntityId = playerInstance.uniqueEntityId 
+            runtimeEntityId = player.uniqueEntityId // <-- Используем сохраненный player
             position = currentPosition 
             rotation = inputPacket.rotation ?: Vector3f.ZERO 
             mode = MovePlayerPacket.Mode.NORMAL
-            isOnGround = shouldSpoofOnGround(playerInstance) 
+            isOnGround = shouldSpoofOnGround() // <-- Передача playerInstance удалена
             tick = inputPacket.tick 
         }
         currentSession?.serverBound(spoofedMovePacket) 
     }
 
-    private fun calculateStealthyMotion(playerInstance: LocalPlayer, inputPacket: PlayerAuthInputPacket) {
+    // calculateStealthyMotion теперь не принимает localPlayer, а использует сохраненный player
+    private fun calculateStealthyMotion(inputPacket: PlayerAuthInputPacket) {
         val inputMotionX: Float = inputPacket.motion?.x ?: 0f
         val inputMotionZ: Float = inputPacket.motion?.y ?: 0f 
 
@@ -112,9 +116,9 @@ object FlightHandler : LuminaRelayPacketListener {
             targetVerticalMotion = currentVelocity.y * FRICTION_FACTOR * 0.5f 
         }
 
-        var newVx: Float = currentVelocity.x + (targetHorizontalMotionX - currentVelocity.x) * ACCELERATION_FACTOR // Changed to var
-        var newVy: Float = currentVelocity.y + (targetVerticalMotion - currentVelocity.y) * ACCELERATION_FACTOR // Changed to var
-        var newVz: Float = currentVelocity.z + (targetHorizontalMotionZ - currentVelocity.z) * ACCELERATION_FACTOR // Changed to var
+        var newVx: Float = currentVelocity.x + (targetHorizontalMotionX - currentVelocity.x) * ACCELERATION_FACTOR 
+        var newVy: Float = currentVelocity.y + (targetVerticalMotion - currentVelocity.y) * ACCELERATION_FACTOR 
+        var newVz: Float = currentVelocity.z + (targetHorizontalMotionZ - currentVelocity.z) * ACCELERATION_FACTOR 
 
         if (inputMotionX == 0f && inputMotionZ == 0f) { 
             newVx *= FRICTION_FACTOR
@@ -130,29 +134,30 @@ object FlightHandler : LuminaRelayPacketListener {
 
         currentVelocity = Vector3f.from(newVx, newVy, newVz)
 
-        playerInstance.vec3Position = playerInstance.vec3Position.add(currentVelocity) 
+        player.vec3Position = player.vec3Position.add(currentVelocity) // <-- Используем сохраненный player
     }
 
-    private fun shouldSpoofOnGround(playerInstance: LocalPlayer): Boolean { 
+    // shouldSpoofOnGround теперь не принимает playerInstance, а использует сохраненный player
+    private fun shouldSpoofOnGround(): Boolean { 
         val isVerticallyStable: Boolean = currentVelocity.y > -VERTICAL_SPEED_TOLERANCE_FOR_GROUND && currentVelocity.y < VERTICAL_SPEED_TOLERANCE_FOR_GROUND
         
         if (tickCounter % GROUND_SPOOF_INTERVAL == 0L || isVerticallyStable) {
             val yOffset: Float = Random.nextDouble(-GROUND_SPOOF_Y_OFFSET.toDouble(), GROUND_SPOOF_Y_OFFSET.toDouble()).toFloat()
-            playerInstance.vec3Position = Vector3f.from(playerInstance.vec3Position.x, playerInstance.vec3Position.y + yOffset, playerInstance.vec3Position.z) 
+            player.vec3Position = Vector3f.from(player.vec3Position.x, player.vec3Position.y + yOffset, player.vec3Position.z) // <-- Используем сохраненный player
             return true
         }
         return false
     }
 
     override fun beforeServerBound(packet: BedrockPacket): Boolean {
-        if (packet is SetEntityMotionPacket && packet.runtimeEntityId == currentSession?.localPlayer?.uniqueEntityId && isFlyingActive) {
+        if (packet is SetEntityMotionPacket && packet.runtimeEntityId == player.uniqueEntityId && isFlyingActive) { // <-- Используем сохраненный player
             return true 
         }
         return false 
     }
 
     override fun beforeClientBound(packet: BedrockPacket): Boolean {
-        currentSession?.localPlayer?.let { playerInstance: LocalPlayer -> 
+        currentSession?.localPlayer?.let { playerInstance: LocalPlayer -> // playerInstance используется здесь
             if (packet is MovePlayerPacket && packet.runtimeEntityId == playerInstance.runtimeEntityId && isFlyingActive) {
                 playerInstance.vec3Position = packet.position 
                 return true 
