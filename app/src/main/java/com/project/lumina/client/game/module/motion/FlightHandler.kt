@@ -83,16 +83,16 @@ object FlightHandler : LuminaRelayPacketListener {
 
         tickCounter++
 
-        calculateStealthyMotion(inputPacket) // <-- Передача playerInstance удалена
+        calculateStealthyMotion(inputPacket) 
 
-        val currentPosition: Vector3f = player.vec3Position // <-- Используем сохраненный player
+        val currentPosition: Vector3f = player.vec3Position
 
         val spoofedMovePacket = MovePlayerPacket().apply {
-            runtimeEntityId = player.uniqueEntityId // <-- Используем сохраненный player
+            runtimeEntityId = player.uniqueEntityId
             position = currentPosition
             rotation = inputPacket.rotation ?: Vector3f.ZERO
             mode = MovePlayerPacket.Mode.NORMAL
-            isOnGround = shouldSpoofOnGround() // <-- Передача playerInstance удалена
+            isOnGround = false // <-- Изменено: всегда false при активном полете
             tick = inputPacket.tick
         }
         currentSession?.serverBound(spoofedMovePacket)
@@ -134,38 +134,36 @@ object FlightHandler : LuminaRelayPacketListener {
 
         currentVelocity = Vector3f.from(newVx, newVy, newVz)
 
-        // Используем player.move() вместо прямой переприсваивания
         player.move(player.vec3Position.add(currentVelocity))
     }
 
     // shouldSpoofOnGround теперь не принимает playerInstance, а использует сохраненный player
-    private fun shouldSpoofOnGround(): Boolean {
+    private fun shouldSpoofOnGround(): Boolean { 
         val isVerticallyStable: Boolean = currentVelocity.y > -VERTICAL_SPEED_TOLERANCE_FOR_GROUND && currentVelocity.y < VERTICAL_SPEED_TOLERANCE_FOR_GROUND
-
+        
         if (tickCounter % GROUND_SPOOF_INTERVAL == 0L || isVerticallyStable) {
             val yOffset: Float = Random.nextDouble(-GROUND_SPOOF_Y_OFFSET.toDouble(), GROUND_SPOOF_Y_OFFSET.toDouble()).toFloat()
-            // Используем player.move() вместо прямой переприсваивания
-            player.move(Vector3f.from(player.vec3Position.x, player.vec3Position.y + yOffset, player.vec3Position.z))
+            // Removed player.move(Vector3f.from(player.vec3Position.x, player.vec3Position.y + yOffset, player.vec3Position.z)) 
             return true
         }
         return false
     }
 
     override fun beforeServerBound(packet: BedrockPacket): Boolean {
-        if (packet is SetEntityMotionPacket && packet.runtimeEntityId == player.uniqueEntityId && isFlyingActive) { // <-- Используем сохраненный player
-            return true
+        if (packet is SetEntityMotionPacket && packet.runtimeEntityId == player.uniqueEntityId && isFlyingActive) { 
+            return true 
         }
-        return false
+        return false 
     }
 
     override fun beforeClientBound(packet: BedrockPacket): Boolean {
         // Здесь используем 'player' вместо 'playerInstance'
         if (packet is MovePlayerPacket && packet.runtimeEntityId == player.runtimeEntityId && isFlyingActive) {
-            player.move(packet.position) // <-- Используем player.move()
-            return true
+            player.move(packet.position) 
+            return true 
         }
         if (packet is SetEntityMotionPacket && packet.runtimeEntityId == player.runtimeEntityId && isFlyingActive) {
-            return true
+            return true 
         }
         return false
     }
@@ -173,7 +171,7 @@ object FlightHandler : LuminaRelayPacketListener {
     override fun afterServerBound(packet: BedrockPacket) {
     }
 
-    override fun afterClientBound(packet: BedrockPacket) {
+    override fun afterClientBound(packet: BedrockPacket) { 
     }
 
     override fun onDisconnect(reason: String) {
