@@ -83,25 +83,42 @@ object FlightHandler : LuminaRelayPacketListener {
 
         tickCounter++
 
-        calculateStealthyMotion(inputPacket) 
+        // This calculates newVx, newVy, newVz and updates player.vec3Position
+        calculateStealthyMotion(inputPacket)
 
-        val currentPosition: Vector3f = player.vec3Position
-
-        val spoofedMovePacket = MovePlayerPacket().apply {
-            runtimeEntityId = player.uniqueEntityId
-            position = currentPosition
-            rotation = inputPacket.rotation ?: Vector3f.ZERO
-            mode = MovePlayerPacket.Mode.NORMAL
-            isOnGround = false // <-- Изменено: всегда false при активном полете
+        // Create a NEW PlayerAuthInputPacket to send to the server
+        val modifiedInputPacket = PlayerAuthInputPacket().apply {
+            // Copy essential data from the original input packet
+            position = player.vec3Position // Use our updated position
+            rotation = inputPacket.rotation
+            motion = currentVelocity // IMPORTANT: Use our calculated velocity here!
             tick = inputPacket.tick
+            inputData.addAll(inputPacket.inputData) // Preserve original input data flags (JUMPING, SNEAKING, etc.)
+            headYaw = inputPacket.headYaw
+            bodyYaw = inputPacket.bodyYaw
+            delta = inputPacket.delta // Preserve original delta motion if any, although our motion overrides it conceptually
+            // Also copy other fields from the original inputPacket if they are relevant
+            // to the server's state management, such as inputMode, interactionModel, etc.
+            // For now, let's assume position, rotation, motion, tick, inputData, headYaw, bodyYaw, delta are sufficient.
+            inputMode = inputPacket.inputMode
+            interactionModel = inputPacket.interactionModel
+            playMode = inputPacket.playMode
+            vrGazeDirection = inputPacket.vrGazeDirection
+            currentTick = inputPacket.currentTick
+            // Add other potentially important fields if the server depends on them
+            // like positionDelta, etc.
         }
-        currentSession?.serverBound(spoofedMovePacket)
+
+        // Send this MODIFIED PlayerAuthInputPacket to the server
+        currentSession?.serverBound(modifiedInputPacket)
+
+        // Removed the MovePlayerPacket sending logic as PlayerAuthInputPacket should handle movement.
     }
 
     // calculateStealthyMotion теперь не принимает localPlayer, а использует сохраненный player
     private fun calculateStealthyMotion(inputPacket: PlayerAuthInputPacket) {
         val inputMotionX: Float = inputPacket.motion?.x ?: 0f
-        val inputMotionZ: Float = inputPacket.motion?.y ?: 0f
+        val inputMotionZ: Float = inputPacket.motion?.y ?: 0f // Bedrock's PlayerAuthInputPacket motion.y is often Z-axis
 
         val yaw: Double = inputPacket.rotation?.y?.toDouble()?.let { it * (PI / 180.0) } ?: 0.0
         val targetHorizontalMotionX: Float = (-sin(yaw) * inputMotionZ.toDouble() + cos(yaw) * inputMotionX.toDouble()).toFloat() * currentFlySpeed
@@ -113,7 +130,7 @@ object FlightHandler : LuminaRelayPacketListener {
         } else if (inputPacket.inputData.contains(PlayerAuthInputData.SNEAKING)) {
             targetVerticalMotion = -currentVerticalSpeed
         } else {
-            targetVerticalMotion = currentVelocity.y * FRICTION_FACTOR * 0.5f
+            targetVerticalMotion = currentVelocity.y * FRICTION_FACTOR * 0.5f // Apply friction to vertical motion if no input
         }
 
         var newVx: Float = currentVelocity.x + (targetHorizontalMotionX - currentVelocity.x) * ACCELERATION_FACTOR
@@ -137,33 +154,32 @@ object FlightHandler : LuminaRelayPacketListener {
         player.move(player.vec3Position.add(currentVelocity))
     }
 
-    // shouldSpoofOnGround теперь не принимает playerInstance, а использует сохраненный player
-    private fun shouldSpoofOnGround(): Boolean { 
+    // shouldSpoofOnGround is no longer modifying player position.
+    private fun shouldSpoofOnGround(): Boolean {
         val isVerticallyStable: Boolean = currentVelocity.y > -VERTICAL_SPEED_TOLERANCE_FOR_GROUND && currentVelocity.y < VERTICAL_SPEED_TOLERANCE_FOR_GROUND
         
         if (tickCounter % GROUND_SPOOF_INTERVAL == 0L || isVerticallyStable) {
-            val yOffset: Float = Random.nextDouble(-GROUND_SPOOF_Y_OFFSET.toDouble(), GROUND_SPOOF_Y_OFFSET.toDouble()).toFloat()
-            // Removed player.move(Vector3f.from(player.vec3Position.x, player.vec3Position.y + yOffset, player.vec3Position.z)) 
+            // val yOffset: Float = Random.nextDouble(-GROUND_SPOOF_Y_OFFSET.toDouble(), GROUND_SPOOF_Y_OFFSET.toDouble()).toFloat()
+            // Removed player.move(Vector3f.from(player.vec3Position.x, player.vec3Position.y + yOffset, player.vec3Position.z))
             return true
         }
         return false
     }
 
     override fun beforeServerBound(packet: BedrockPacket): Boolean {
-        if (packet is SetEntityMotionPacket && packet.runtimeEntityId == player.uniqueEntityId && isFlyingActive) { 
-            return true 
+        if (packet is SetEntityMotionPacket && packet.runtimeEntityId == player.uniqueEntityId && isFlyingActive) {
+            return true
         }
-        return false 
+        return false
     }
 
     override fun beforeClientBound(packet: BedrockPacket): Boolean {
-        // Здесь используем 'player' вместо 'playerInstance'
         if (packet is MovePlayerPacket && packet.runtimeEntityId == player.runtimeEntityId && isFlyingActive) {
-            player.move(packet.position) 
-            return true 
+            player.move(packet.position)
+            return true
         }
         if (packet is SetEntityMotionPacket && packet.runtimeEntityId == player.runtimeEntityId && isFlyingActive) {
-            return true 
+            return true
         }
         return false
     }
@@ -171,7 +187,7 @@ object FlightHandler : LuminaRelayPacketListener {
     override fun afterServerBound(packet: BedrockPacket) {
     }
 
-    override fun afterClientBound(packet: BedrockPacket) { 
+    override fun afterClientBound(packet: BedrockPacket) {
     }
 
     override fun onDisconnect(reason: String) {
