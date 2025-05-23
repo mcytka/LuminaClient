@@ -9,6 +9,7 @@ import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import org.cloudburstmc.protocol.bedrock.packet.SetEntityMotionPacket
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
+import org.cloudburstmc.math.vector.Vector2f // Добавил импорт для Vector2f
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.PI
@@ -90,29 +91,25 @@ object FlightHandler : LuminaRelayPacketListener {
         val modifiedInputPacket = PlayerAuthInputPacket().apply {
             // Copy essential data from the original input packet
             position = player.vec3Position // Use our updated position
-            rotation = inputPacket.rotation
+            // Исправлено: преобразование Vector3f в Vector2f для rotation
+            rotation = Vector2f.from(inputPacket.rotation?.x ?: 0f, inputPacket.rotation?.y ?: 0f)
             motion = currentVelocity // IMPORTANT: Use our calculated velocity here!
             tick = inputPacket.tick
             inputData.addAll(inputPacket.inputData) // Preserve original input data flags (JUMPING, SNEAKING, etc.)
-            headYaw = inputPacket.headYaw
-            bodyYaw = inputPacket.bodyYaw
-            delta = inputPacket.delta // Preserve original delta motion if any, although our motion overrides it conceptually
-            // Also copy other fields from the original inputPacket if they are relevant
-            // to the server's state management, such as inputMode, interactionModel, etc.
-            // For now, let's assume position, rotation, motion, tick, inputData, headYaw, bodyYaw, delta are sufficient.
-            inputMode = inputPacket.inputMode
-            interactionModel = inputPacket.interactionModel
-            playMode = inputPacket.playMode
-            vrGazeDirection = inputPacket.vrGazeDirection
-            currentTick = inputPacket.currentTick
-            // Add other potentially important fields if the server depends on them
-            // like positionDelta, etc.
+            
+            // Удалены строки, вызывающие Unresolved reference:
+            // headYaw = inputPacket.headYaw
+            // bodyYaw = inputPacket.bodyYaw
+            // delta = inputPacket.delta // Preserve original delta motion if any, although our motion overrides it conceptually
+            // inputMode = inputPacket.inputMode
+            // interactionModel = inputPacket.interactionModel
+            // playMode = inputPacket.playMode
+            // vrGazeDirection = inputPacket.vrGazeDirection
+            // currentTick = inputPacket.currentTick
         }
 
         // Send this MODIFIED PlayerAuthInputPacket to the server
         currentSession?.serverBound(modifiedInputPacket)
-
-        // Removed the MovePlayerPacket sending logic as PlayerAuthInputPacket should handle movement.
     }
 
     // calculateStealthyMotion теперь не принимает localPlayer, а использует сохраненный player
