@@ -32,7 +32,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
 
                 // Get current player position for relative comparison
                 val playerY = localPlayer.vec3Position.y
-                val playerEyeHeight = localPlayer.getEyeHeight() // Use the getter method
+                val playerEyeHeight = localPlayer.eyeHeight // Use the getter method
 
                 // Base teleportation coordinates - center of the block
                 val targetX = blockPosition.x.toFloat() + 0.5f
