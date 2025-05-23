@@ -8,7 +8,7 @@ import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import org.cloudburstmc.protocol.bedrock.packet.SetEntityMotionPacket
-import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData // <-- Добавлен импорт
+import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData 
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.PI
@@ -68,7 +68,7 @@ object FlightHandler : LuminaRelayPacketListener {
     fun stopFlight() {
         isFlyingActive = false
         // Приземляем игрока, если был активен полет, отправляя пакет движения с isOnGround = true
-        session?.localPlayer?.let { player -> // <-- Использован let для безопасного доступа
+        session?.localPlayer?.let { player -> 
             val landingPosition = Vector3f.from(player.vec3Position.x, player.vec3Position.y, player.vec3Position.z)
             val movePacket = MovePlayerPacket().apply {
                 runtimeEntityId = player.uniqueEntityId
@@ -79,7 +79,7 @@ object FlightHandler : LuminaRelayPacketListener {
                 tick = player.tickExists
             }
             // Отправляем пакет приземления несколько раз для надежности
-            repeat(5) { // Отправляем 5 раз, можно настроить
+            repeat(5) { 
                 session?.serverBound(movePacket)
             }
         }
@@ -105,12 +105,12 @@ object FlightHandler : LuminaRelayPacketListener {
 
         // Отправляем подделанный MovePlayerPacket на сервер
         val spoofedMovePacket = MovePlayerPacket().apply {
-            runtimeEntityId = localPlayer.uniqueEntityId // <-- Доступ через localPlayer
+            runtimeEntityId = localPlayer.uniqueEntityId 
             position = currentPosition 
             rotation = inputPacket.rotation ?: Vector3f.ZERO 
             mode = MovePlayerPacket.Mode.NORMAL
             isOnGround = shouldSpoofOnGround() 
-            tick = inputPacket.tick // <-- Доступ через inputPacket
+            tick = inputPacket.tick 
         }
         session?.serverBound(spoofedMovePacket) 
     }
@@ -137,9 +137,9 @@ object FlightHandler : LuminaRelayPacketListener {
         }
 
         // Обновляем текущую скорость плавно (акселерация)
-        var newVx = currentVelocity.x + (targetHorizontalMotionX - currentVelocity.x) * ACCELERATION_FACTOR
-        var newVy = currentVelocity.y + (targetVerticalMotion - currentVelocity.y) * ACCELERATION_FACTOR
-        var newVz = currentVelocity.z + (targetHorizontalMotionZ - currentVelocity.z) * ACCELERATION_FACTOR
+        var newVx = currentVelocity.x + (targetHorizontalMotionX - currentVelocity.x) * ACCELERATION_FACTOR // <-- Изменено на var
+        var newVy = currentVelocity.y + (targetVerticalMotion - currentVelocity.y) * ACCELERATION_FACTOR // <-- Изменено на var
+        var newVz = currentVelocity.z + (targetHorizontalMotionZ - currentVelocity.z) * ACCELERATION_FACTOR // <-- Изменено на var
 
         // Применяем трение, если нет активного горизонтального или вертикального ввода
         // Горизонтальное трение
@@ -170,7 +170,7 @@ object FlightHandler : LuminaRelayPacketListener {
         
         // Добавляем случайный небольшой Y-оффсет для имитации "шага" при имитации onGround
         if (tickCounter % GROUND_SPOOF_INTERVAL == 0L || isVerticallyStable) {
-            session?.localPlayer?.let { player -> // <-- Использован let для безопасного доступа
+            session?.localPlayer?.let { player -> 
                 val yOffset = Random.nextDouble(-GROUND_SPOOF_Y_OFFSET.toDouble(), GROUND_SPOOF_Y_OFFSET.toDouble()).toFloat()
                 player.vec3Position = Vector3f.from(player.vec3Position.x, player.vec3Position.y + yOffset, player.vec3Position.z)
             }
