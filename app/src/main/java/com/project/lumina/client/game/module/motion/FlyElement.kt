@@ -35,8 +35,9 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
     private val FRICTION_FACTOR = 0.98f 
     private val ACCELERATION_FACTOR = 0.1f 
 
-    private const val MAX_HORIZONTAL_SPEED: Float = 0.5f
-    private const val MAX_VERTICAL_SPEED: Float = 0.5f
+    // Constants for clamping speeds
+    private val MAX_HORIZONTAL_SPEED: Float = 0.5f // Changed from const val to val
+    private val MAX_VERTICAL_SPEED: Float = 0.5f   // Changed from const val to val
 
     private val enableFlyAbilitiesPacket = UpdateAbilitiesPacket().apply {
         playerPermission = PlayerPermission.OPERATOR
