@@ -16,68 +16,65 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
     displayNameResId = R.string.module_tapteleport_display_name
 ) {
 
-    private val teleportOffset = floatValue("Offset", 0.0f, 0.0f..2.0f) // Отступ от целевой позиции, 0.0f по умолчанию
+    private val teleportOffset = floatValue("Offset", 0.0f, 0.0f..2.0f) // Offset from target position, 0.0f by default
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
-        if (!isEnabled) return // Модуль должен быть включен для работы
+        if (!isEnabled) return // Module must be enabled to work
 
         val packet = interceptablePacket.packet
+        val localPlayer = session.localPlayer ?: return // Ensure localPlayer exists
 
         if (packet is PlayerActionPacket) {
-            // Мы ищем действие, которое указывает на "тап" по блоку
-            if (packet.action == PlayerActionType.CONTINUE_DESTROY_BLOCK || packet.action == PlayerActionType.START_BREAK) {
+            // We are looking for an action that indicates a "tap" on a block
+            if (packet.action == PlayerActionType.START_BREAK) {
                 val blockPosition = packet.blockPosition
                 val face = packet.face
 
-                // Получаем текущую позицию игрока для относительного сравнения
-                val playerY = session.localPlayer.vec3Position.y
-                val playerEyeHeight = session.localPlayer.eyeHeight
+                // Get current player position for relative comparison
+                val playerY = localPlayer.vec3Position.y
+                val playerEyeHeight = localPlayer.getEyeHeight() // Use the getter method
 
-                // Базовые координаты телепортации - центр блока
-                val targetX = blockPosition.x.toFloat() + 0.5f 
-                val targetZ = blockPosition.z.toFloat() + 0.5f 
+                // Base teleportation coordinates - center of the block
+                val targetX = blockPosition.x.toFloat() + 0.5f
+                val targetZ = blockPosition.z.toFloat() + 0.5f
 
                 var teleportToY: Float
 
                 when (face) {
-                    1 -> { // Тап по верхней грани (TOP_FACE)
-                        // Телепортируемся на верхнюю поверхность блока
-                        teleportToY = blockPosition.y.toFloat() + 1.0f 
-                    }
-                    0 -> { // Тап по нижней грани (BOTTOM_FACE)
-                        // Телепортируемся под блок
-                        teleportToY = blockPosition.y.toFloat() - playerEyeHeight - 0.1f 
-                    }
-                    else -> { // Тап по боковой грани (SIDE_FACES)
-                        // Если блок значительно выше игрока (над головой)
+                    // Tap on top face (TOP_FACE) - teleport to the top surface of the block
+                    1 -> teleportToY = blockPosition.y.toFloat() + 1.0f
+                    // Tap on bottom face (BOTTOM_FACE) - teleport under the block
+                    0 -> teleportToY = blockPosition.y.toFloat() - playerEyeHeight - 0.1f
+                    else -> { // Tap on side face (SIDE_FACES)
+                        // If the block is significantly above the player (above head)
                         if (blockPosition.y.toFloat() > playerY + playerEyeHeight) {
-                            // Телепортируемся под блок
+                            // Teleport under the block
                             teleportToY = blockPosition.y.toFloat() - playerEyeHeight - 0.1f
                         } else {
-                            // Иначе телепортируемся на тот же Y-уровень, что и основание блока
+                            // Otherwise, teleport to the same Y-level as the base of the block
                             teleportToY = blockPosition.y.toFloat()
                         }
                     }
                 }
 
-                // Применяем отступ
+                // Apply the offset
                 teleportToY += teleportOffset.value
 
                 val newPosition = Vector3f.from(targetX, teleportToY, targetZ)
 
-                // Создаем пакет для телепортации
+                // Create a teleportation packet
                 val movePlayerPacket = MovePlayerPacket().apply {
-                    runtimeEntityId = session.localPlayer.uniqueEntityId
+                    runtimeEntityId = localPlayer.uniqueEntityId
                     position = newPosition
-                    rotation = session.localPlayer.vec3Rotation // Сохраняем текущее вращение
-                    mode = MovePlayerPacket.Mode.TELEPORT // Используем режим телепортации
-                    isOnGround = true // Имитируем приземление для обхода урона от падения
-                    tick = session.localPlayer.tickExists
+                    rotation = localPlayer.vec3Rotation // Maintain current rotation
+                    mode = MovePlayerPacket.Mode.TELEPORT // Use teleportation mode
+                    onGround = true // Simulate landing to bypass fall damage
+                    tick = localPlayer.tickExists // Use current tick
                 }
 
-                session.serverBound(movePlayerPacket) // Отправляем пакет на сервер
+                session.serverBound(movePlayerPacket) // Send packet to the server
 
-                interceptablePacket.intercept() // Перехватываем оригинальный пакет действия
+                interceptablePacket.intercept() // Intercept original action packet
             }
         }
     }
