@@ -47,10 +47,7 @@ object FlightHandler : LuminaRelayPacketListener {
 
     // Метод для инициализации обработчика полета и передачи текущей сессии
     fun initialize(luminaRelaySession: LuminaRelaySession) {
-        // Добавляем FlightHandler в список слушателей сессии, если он еще не добавлен для этой сессии
-        // или если сессия изменилась (например, при переподключении)
         if (this.session == null || this.session != luminaRelaySession) {
-            // Если предыдущая сессия существовала, удаляем себя из ее слушателей
             this.session?.listeners?.remove(this)
             this.session = luminaRelaySession
             luminaRelaySession.listeners.add(this) 
@@ -67,7 +64,6 @@ object FlightHandler : LuminaRelayPacketListener {
     // Деактивирует функционал полета (вызывается при получении STOP_FLYING)
     fun stopFlight() {
         isFlyingActive = false
-        // Приземляем игрока, если был активен полет, отправляя пакет движения с isOnGround = true
         session?.localPlayer?.let { player -> 
             val landingPosition = Vector3f.from(player.vec3Position.x, player.vec3Position.y, player.vec3Position.z)
             val movePacket = MovePlayerPacket().apply {
@@ -78,12 +74,11 @@ object FlightHandler : LuminaRelayPacketListener {
                 isOnGround = true 
                 tick = player.tickExists
             }
-            // Отправляем пакет приземления несколько раз для надежности
             repeat(5) { 
                 session?.serverBound(movePacket)
             }
         }
-        currentVelocity = Vector3f.ZERO // Сбрасываем скорость при остановке полета
+        currentVelocity = Vector3f.ZERO 
     }
 
     // Обрабатывает входные данные игрока для движения
@@ -94,22 +89,18 @@ object FlightHandler : LuminaRelayPacketListener {
         this.currentFlySpeed = flySpeed
         this.currentVerticalSpeed = verticalSpeed
 
-        // Увеличиваем счетчик тиков
         tickCounter++
 
-        // Рассчитываем желаемое движение на основе ввода и текущей скорости
         calculateStealthyMotion(localPlayer, inputPacket) 
 
-        // Получаем текущую позицию игрока (которая уже обновлена в calculateStealthyMotion)
         val currentPosition = localPlayer.vec3Position
 
-        // Отправляем подделанный MovePlayerPacket на сервер
         val spoofedMovePacket = MovePlayerPacket().apply {
             runtimeEntityId = localPlayer.uniqueEntityId 
             position = currentPosition 
             rotation = inputPacket.rotation ?: Vector3f.ZERO 
             mode = MovePlayerPacket.Mode.NORMAL
-            isOnGround = shouldSpoofOnGround() 
+            isOnGround = shouldSpoofOnGround(localPlayer) 
             tick = inputPacket.tick 
         }
         session?.serverBound(spoofedMovePacket) 
@@ -120,68 +111,53 @@ object FlightHandler : LuminaRelayPacketListener {
         val inputMotionX = inputPacket.motion?.x ?: 0f
         val inputMotionZ = inputPacket.motion?.y ?: 0f 
 
-        // Горизонтальное целевое движение на основе ввода
         val yaw = inputPacket.rotation?.y?.toDouble()?.let { it * (PI / 180.0) } ?: 0.0
         val targetHorizontalMotionX = (-sin(yaw) * inputMotionZ.toDouble() + cos(yaw) * inputMotionX.toDouble()).toFloat() * currentFlySpeed
         val targetHorizontalMotionZ = (cos(yaw) * inputMotionZ.toDouble() + sin(yaw) * inputMotionX.toDouble()).toFloat() * currentFlySpeed
 
-        // Вертикальное целевое движение на основе JUMPING/SNEAKING
         var targetVerticalMotion = 0f
         if (inputPacket.inputData.contains(PlayerAuthInputData.JUMPING)) {
             targetVerticalMotion = currentVerticalSpeed
         } else if (inputPacket.inputData.contains(PlayerAuthInputData.SNEAKING)) {
             targetVerticalMotion = -currentVerticalSpeed
         } else {
-            // Если нет вертикального ввода, медленно "приземляем" скорость, но не ускоряем вниз, как гравитация
             targetVerticalMotion = currentVelocity.y * FRICTION_FACTOR * 0.5f 
         }
 
-        // Обновляем текущую скорость плавно (акселерация)
-        var newVx = currentVelocity.x + (targetHorizontalMotionX - currentVelocity.x) * ACCELERATION_FACTOR // <-- Изменено на var
-        var newVy = currentVelocity.y + (targetVerticalMotion - currentVelocity.y) * ACCELERATION_FACTOR // <-- Изменено на var
-        var newVz = currentVelocity.z + (targetHorizontalMotionZ - currentVelocity.z) * ACCELERATION_FACTOR // <-- Изменено на var
+        var newVx = currentVelocity.x + (targetHorizontalMotionX - currentVelocity.x) * ACCELERATION_FACTOR 
+        var newVy = currentVelocity.y + (targetVerticalMotion - currentVelocity.y) * ACCELERATION_FACTOR 
+        var newVz = currentVelocity.z + (targetHorizontalMotionZ - currentVelocity.z) * ACCELERATION_FACTOR 
 
-        // Применяем трение, если нет активного горизонтального или вертикального ввода
-        // Горизонтальное трение
         if (inputMotionX == 0f && inputMotionZ == 0f) { 
             newVx *= FRICTION_FACTOR
             newVz *= FRICTION_FACTOR
         }
-        // Вертикальное трение
         if (!inputPacket.inputData.contains(PlayerAuthInputData.JUMPING) && !inputPacket.inputData.contains(PlayerAuthInputData.SNEAKING)) { 
              newVy *= FRICTION_FACTOR
         }
 
-        // Ограничиваем скорость, чтобы не превышать лимиты античитов
         newVx = newVx.coerceIn(-MAX_HORIZONTAL_SPEED, MAX_HORIZONTAL_SPEED)
         newVy = newVy.coerceIn(-MAX_VERTICAL_SPEED, MAX_VERTICAL_SPEED)
         newVz = newVz.coerceIn(-MAX_HORIZONTAL_SPEED, MAX_HORIZONTAL_SPEED)
 
         currentVelocity = Vector3f.from(newVx, newVy, newVz)
 
-        // Обновляем позицию локального игрока
         localPlayer.vec3Position = localPlayer.vec3Position.add(currentVelocity)
     }
 
     // Определяет, нужно ли имитировать состояние "на земле"
-    private fun shouldSpoofOnGround(): Boolean {
-        // Имитируем касание земли каждые N тиков ИЛИ если вертикальная скорость очень мала
+    private fun shouldSpoofOnGround(localPlayer: LocalPlayer): Boolean { 
         val isVerticallyStable = currentVelocity.y > -VERTICAL_SPEED_TOLERANCE_FOR_GROUND && currentVelocity.y < VERTICAL_SPEED_TOLERANCE_FOR_GROUND
         
-        // Добавляем случайный небольшой Y-оффсет для имитации "шага" при имитации onGround
         if (tickCounter % GROUND_SPOOF_INTERVAL == 0L || isVerticallyStable) {
-            session?.localPlayer?.let { player -> 
-                val yOffset = Random.nextDouble(-GROUND_SPOOF_Y_OFFSET.toDouble(), GROUND_SPOOF_Y_OFFSET.toDouble()).toFloat()
-                player.vec3Position = Vector3f.from(player.vec3Position.x, player.vec3Position.y + yOffset, player.vec3Position.z)
-            }
+            val yOffset = Random.nextDouble(-GROUND_SPOOF_Y_OFFSET.toDouble(), GROUND_SPOOF_Y_OFFSET.toDouble()).toFloat()
+            localPlayer.vec3Position = Vector3f.from(localPlayer.vec3Position.x, localPlayer.vec3Position.y + yOffset, localPlayer.vec3Position.z) 
             return true
         }
         return false
     }
 
-    // Методы LuminaRelayPacketListener
     override fun beforeServerBound(packet: BedrockPacket): Boolean {
-        // Если сервер пытается сбросить нашу скорость, пока мы летим, игнорируем это
         if (packet is SetEntityMotionPacket && packet.runtimeEntityId == session?.localPlayer?.runtimeEntityId && isFlyingActive) {
             return true 
         }
@@ -189,17 +165,12 @@ object FlightHandler : LuminaRelayPacketListener {
     }
 
     override fun beforeClientBound(packet: BedrockPacket): Boolean {
-        session?.localPlayer?.let { localPlayer ->
-            // Если это пакет движения игрока от сервера (например, телепорт или коррекция)
-            if (packet is MovePlayerPacket && packet.runtimeEntityId == localPlayer.runtimeEntityId && isFlyingActive) {
-                // Принимаем позицию от сервера временно, чтобы не игнорировать полностью
-                localPlayer.vec3Position = packet.position 
-                // Затем в handlePlayerInput мы отправим нашу желаемую позицию обратно
+        session?.localPlayer?.let { player ->
+            if (packet is MovePlayerPacket && packet.runtimeEntityId == player.runtimeEntityId && isFlyingActive) {
+                player.vec3Position = packet.position 
                 return true 
             }
-            // Если сервер пытается установить движение для нашего игрока (помимо нашей логики)
-            if (packet is SetEntityMotionPacket && packet.runtimeEntityId == localPlayer.runtimeEntityId && isFlyingActive) {
-                // Игнорируем попытки сервера сбросить или установить нашу скорость
+            if (packet is SetEntityMotionPacket && packet.runtimeEntityId == player.runtimeEntityId && isFlyingActive) {
                 return true 
             }
         }
@@ -207,15 +178,12 @@ object FlightHandler : LuminaRelayPacketListener {
     }
 
     override fun afterServerBound(packet: BedrockPacket) {
-        // Можно использовать для отладки или для обработки пакетов после отправки
     }
 
     override fun afterClientBound(packet: BedrockPacket) {
-        // Можно использовать для отладки или для обработки пакетов после получения
     }
 
     override fun onDisconnect(reason: String) {
-        // При отключении от сервера сбрасываем состояние полета
         isFlyingActive = false
         currentVelocity = Vector3f.ZERO
         tickCounter = 0
