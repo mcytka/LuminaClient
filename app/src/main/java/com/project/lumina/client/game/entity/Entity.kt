@@ -102,6 +102,9 @@ open class Entity(open val runtimeEntityId: Long, open val uniqueEntityId: Long)
     val vec3Rotation: Vector3f
         get() = Vector3f.from(rotationPitch, rotationYaw, rotationYawHead)
 
+    open val eyeHeight: Float
+        get() = metadata[EntityDataTypes.HEIGHT] as? Float ?: 1.62f // Default Minecraft player eye height
+
     open val isSneaking: Boolean
         get() = metadata.flags.contains(EntityFlag.SNEAKING)
 
