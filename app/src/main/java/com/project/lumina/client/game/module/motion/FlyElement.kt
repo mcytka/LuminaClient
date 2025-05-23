@@ -13,8 +13,8 @@ import org.cloudburstmc.protocol.bedrock.data.command.CommandPermission
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import org.cloudburstmc.protocol.bedrock.packet.RequestAbilityPacket
+import org.cloudburstmc.protocol.bedrock.packet.SetEntityMotionPacket
 import org.cloudburstmc.protocol.bedrock.packet.UpdateAbilitiesPacket
-import org.cloudburstmc.math.vector.Vector2f 
 import kotlin.math.cos
 import kotlin.math.PI
 import kotlin.math.sin
@@ -28,14 +28,9 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
 
     private var flySpeed by floatValue("Speed", 0.3f, 0.05f..1.0f)
     private var verticalSpeed by floatValue("Vertical Speed", 0.3f, 0.1f..1.0f)
-    
-    private var isFlyingActive: Boolean = false 
-    private var currentVelocity: Vector3f = Vector3f.ZERO 
-
-    private val FRICTION_FACTOR = 0.9f 
-    private val ACCELERATION_FACTOR = 0.15f 
-    private val MAX_HORIZONTAL_SPEED: Float = 0.4f 
-    private val MAX_VERTICAL_SPEED: Float = 0.4f   
+    private var canFly = false
+    private var tickCounter = 0
+    private var lastPosition: Vector3f? = null
 
     private fun toRadians(degrees: Double): Double = degrees * (PI / 180.0)
 
@@ -47,10 +42,16 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
             abilitiesSet.addAll(Ability.entries.toTypedArray())
             abilityValues.addAll(
                 listOf(
-                    Ability.BUILD, Ability.MINE, Ability.DOORS_AND_SWITCHES,
-                    Ability.OPEN_CONTAINERS, Ability.ATTACK_PLAYERS, Ability.ATTACK_MOBS,
-                    Ability.OPERATOR_COMMANDS, Ability.MAY_FLY, 
-                    Ability.FLY_SPEED, Ability.WALK_SPEED
+                    Ability.BUILD,
+                    Ability.MINE,
+                    Ability.DOORS_AND_SWITCHES,
+                    Ability.OPEN_CONTAINERS,
+                    Ability.ATTACK_PLAYERS,
+                    Ability.ATTACK_MOBS,
+                    Ability.OPERATOR_COMMANDS,
+                    Ability.MAY_FLY,
+                    Ability.FLY_SPEED,
+                    Ability.WALK_SPEED
                 )
             )
             walkSpeed = 0.1f
@@ -66,61 +67,19 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
             abilitiesSet.addAll(Ability.entries.toTypedArray())
             abilityValues.addAll(
                 listOf(
-                    Ability.BUILD, Ability.MINE, Ability.DOORS_AND_SWITCHES,
-                    Ability.OPEN_CONTAINERS, Ability.ATTACK_PLAYERS, Ability.ATTACK_MOBS,
-                    Ability.OPERATOR_COMMANDS, Ability.WALK_SPEED
+                    Ability.BUILD,
+                    Ability.MINE,
+                    Ability.DOORS_AND_SWITCHES,
+                    Ability.OPEN_CONTAINERS,
+                    Ability.ATTACK_PLAYERS,
+                    Ability.ATTACK_MOBS,
+                    Ability.OPERATOR_COMMANDS,
+                    Ability.WALK_SPEED
                 )
             )
             walkSpeed = 0.1f
-            flySpeed = 0.0f 
+            flySpeed = 0.0f
         })
-    }
-
-    override fun onEnabled() {
-        super.onEnabled()
-        if (!isSessionCreated) { 
-            return
-        }
-        session.localPlayer?.let { localPlayer ->
-            enableFlyAbilitiesPacket.uniqueEntityId = localPlayer.uniqueEntityId
-            session.clientBound(enableFlyAbilitiesPacket)
-        }
-        currentVelocity = Vector3f.ZERO 
-        isFlyingActive = false 
-    }
-
-    override fun onDisabled() {
-        super.onDisabled()
-        if (!isSessionCreated) { 
-            return
-        }
-        session.localPlayer?.let { localPlayer ->
-            disableFlyAbilitiesPacket.uniqueEntityId = localPlayer.uniqueEntityId
-            session.clientBound(disableFlyAbilitiesPacket)
-        }
-        landPlayer() 
-        currentVelocity = Vector3f.ZERO 
-        isFlyingActive = false
-    }
-
-    private fun landPlayer() {
-        if (!isSessionCreated) { 
-            return
-        }
-        session.localPlayer?.let { localPlayer ->
-            val landingPosition: Vector3f = localPlayer.vec3Position
-            val movePacket = MovePlayerPacket().apply {
-                runtimeEntityId = localPlayer.uniqueEntityId
-                position = landingPosition
-                rotation = localPlayer.vec3Rotation
-                mode = MovePlayerPacket.Mode.NORMAL
-                isOnGround = true 
-                tick = localPlayer.tickExists
-            }
-            repeat(5) { 
-                session.serverBound(movePacket)
-            }
-        }
     }
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
@@ -130,82 +89,93 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
             interceptablePacket.intercept()
             return
         }
+
         if (packet is UpdateAbilitiesPacket) {
             interceptablePacket.intercept()
             return
         }
 
-        if (packet is PlayerAuthInputPacket && isEnabled) {
-            if (!isSessionCreated) { 
-                return
+        if (packet is PlayerAuthInputPacket) {
+
+            if (!canFly && isEnabled) {
+                enableFlyAbilitiesPacket.uniqueEntityId = session.localPlayer.uniqueEntityId
+                session.clientBound(enableFlyAbilitiesPacket)
+                canFly = true
+            } else if (canFly && !isEnabled) {
+                disableFlyAbilitiesPacket.uniqueEntityId = session.localPlayer.uniqueEntityId
+                session.clientBound(disableFlyAbilitiesPacket)
+                canFly = false
             }
 
-            if (packet.inputData.contains(PlayerAuthInputData.START_FLYING)) {
-                if (!isFlyingActive) { 
-                    isFlyingActive = true
-                    currentVelocity = Vector3f.ZERO 
-                }
-                interceptablePacket.intercept() 
-                return 
-            }
-            if (packet.inputData.contains(PlayerAuthInputData.STOP_FLYING)) {
-                if (isFlyingActive) { 
-                    isFlyingActive = false
-                    landPlayer() 
-                }
-                interceptablePacket.intercept() 
-                return 
-            }
-
-            if (isFlyingActive) {
-                interceptablePacket.intercept() 
-
-                var targetVerticalMotion = 0f
-                if (packet.inputData.contains(PlayerAuthInputData.JUMPING)) {
-                    targetVerticalMotion = verticalSpeed
-                } else if (packet.inputData.contains(PlayerAuthInputData.SNEAKING)) {
-                    targetVerticalMotion = -verticalSpeed
-                }
-                else {
-                    targetVerticalMotion = currentVelocity.y * FRICTION_FACTOR
+            if (isEnabled) {
+                if (packet.inputData.contains(PlayerAuthInputData.START_FLYING) ||
+                    packet.inputData.contains(PlayerAuthInputData.STOP_FLYING)) {
+                    interceptablePacket.intercept()
                 }
 
-                val inputMotionX: Float = packet.motion?.x ?: 0f 
-                val inputMotionZ: Float = packet.motion?.y ?: 0f 
+                val isFlying = packet.inputData.contains(PlayerAuthInputData.JUMPING) ||
+                        packet.inputData.contains(PlayerAuthInputData.SNEAKING)
 
-                val yaw: Double = packet.rotation?.y?.toDouble()?.let { it * (PI / 180.0) } ?: 0.0 
-
-                val targetHorizontalMotionX: Float = (-sin(yaw) * inputMotionZ.toDouble() + cos(yaw) * inputMotionX.toDouble()).toFloat() * flySpeed
-                val targetHorizontalMotionZ: Float = (cos(yaw) * inputMotionZ.toDouble() + sin(yaw) * inputMotionX.toDouble()).toFloat() * flySpeed
-
-                var newVx: Float = currentVelocity.x + (targetHorizontalMotionX - currentVelocity.x) * ACCELERATION_FACTOR
-                var newVy: Float = currentVelocity.y + (targetVerticalMotion - currentVelocity.y) * ACCELERATION_FACTOR
-                var newVz: Float = currentVelocity.z + (targetHorizontalMotionZ - currentVelocity.z) * ACCELERATION_FACTOR
-
-                if (inputMotionX == 0f && inputMotionZ == 0f) {
-                    newVx *= FRICTION_FACTOR
-                    newVz *= FRICTION_FACTOR
-                }
-                if (!packet.inputData.contains(PlayerAuthInputData.JUMPING) && !packet.inputData.contains(PlayerAuthInputData.SNEAKING)) {
-                    newVy *= FRICTION_FACTOR
+                var verticalMotion = 0f
+                if (isFlying) {
+                    if (packet.inputData.contains(PlayerAuthInputData.JUMPING)) {
+                        verticalMotion = verticalSpeed
+                    } else if (packet.inputData.contains(PlayerAuthInputData.SNEAKING)) {
+                        verticalMotion = -verticalSpeed
+                    }
                 }
 
-                newVx = newVx.coerceIn(-MAX_HORIZONTAL_SPEED, MAX_HORIZONTAL_SPEED)
-                newVy = newVy.coerceIn(-MAX_VERTICAL_SPEED, MAX_VERTICAL_SPEED)
-                newVz = newVz.coerceIn(-MAX_HORIZONTAL_SPEED, MAX_HORIZONTAL_SPEED)
+                val inputMotion = packet.motion?.let {
+                    Vector3f.from(it.x, 0f, it.y)
+                } ?: Vector3f.ZERO
 
-                currentVelocity = Vector3f.from(newVx, newVy, newVz)
-
-                session.localPlayer.move(session.localPlayer.vec3Position.add(currentVelocity))
-
-                val newPlayerAuthInputPacket = PlayerAuthInputPacket().apply {
-                    position = session.localPlayer.vec3Position 
-                    rotation = packet.rotation ?: Vector3f.ZERO 
-                    motion = org.cloudburstmc.math.vector.Vector2f.from(currentVelocity.x, currentVelocity.z) 
-                    tick = packet.tick 
-                    inputData.addAll(packet.inputData) 
+                val yaw = packet.rotation?.y?.toDouble()?.let { toRadians(it) } ?: 0.0
+                val horizontalMotion = if (inputMotion != Vector3f.ZERO && isFlying) {
+                    val speed = flySpeed.toDouble()
+                    Vector3f.from(
+                        ((-sin(yaw) * inputMotion.z.toDouble() + cos(yaw) * inputMotion.x.toDouble()) * speed).toFloat(),
+                        0f,
+                        ((cos(yaw) * inputMotion.z.toDouble() + sin(yaw) * inputMotion.x.toDouble()) * speed).toFloat()
+                    )
+                } else {
+                    Vector3f.ZERO
                 }
-                session.serverBound(newPlayerAuthInputPacket)
+
+                val combinedMotion = Vector3f.from(
+                    horizontalMotion.x,
+                    verticalMotion,
+                    horizontalMotion.z
+                )
+
+                if (isFlying && combinedMotion != Vector3f.ZERO) {
+                    val motionPacket = SetEntityMotionPacket().apply {
+                        runtimeEntityId = session.localPlayer.runtimeEntityId
+                        motion = combinedMotion
+                    }
+                    session.clientBound(motionPacket)
+                } else if (isFlying) {
+                    val stopMotionPacket = SetEntityMotionPacket().apply {
+                        runtimeEntityId = session.localPlayer.runtimeEntityId
+                        motion = Vector3f.ZERO
+                    }
+                    session.clientBound(stopMotionPacket)
+                }
+
+                tickCounter++
+                val playerPosition = packet.position?.let { Vector3f.from(it.x, it.y, it.z) } ?: Vector3f.ZERO
+                if (playerPosition != Vector3f.ZERO && tickCounter % 2 == 0) {
+                    if (lastPosition == null || playerPosition != lastPosition) {
+                        val movePacket = MovePlayerPacket().apply {
+                            runtimeEntityId = session.localPlayer.uniqueEntityId
+                            position = playerPosition
+                            rotation = packet.rotation?.let { Vector3f.from(it.x, it.y, it.z) } ?: Vector3f.ZERO
+                            mode = MovePlayerPacket.Mode.NORMAL
+                            tick = packet.tick
+                        }
+                        session.serverBound(movePacket)
+                        lastPosition = playerPosition
+                    }
+                }
             }
         }
     }
