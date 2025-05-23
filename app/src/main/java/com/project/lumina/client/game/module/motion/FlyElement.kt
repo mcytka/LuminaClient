@@ -13,7 +13,6 @@ import org.cloudburstmc.protocol.bedrock.data.command.CommandPermission
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import org.cloudburstmc.protocol.bedrock.packet.RequestAbilityPacket
-import org.cloudburstmc.protocol.bedrock.packet.SetEntityMotionPacket
 import org.cloudburstmc.protocol.bedrock.packet.UpdateAbilitiesPacket
 import org.cloudburstmc.math.vector.Vector2f 
 import kotlin.math.cos
@@ -29,14 +28,16 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
 
     private var flySpeed by floatValue("Speed", 0.3f, 0.05f..1.0f)
     private var verticalSpeed by floatValue("Vertical Speed", 0.3f, 0.1f..1.0f)
-
-    private var currentVelocity: Vector3f = Vector3f.ZERO
+    
     private var isFlyingActive: Boolean = false 
-    private val FRICTION_FACTOR = 0.98f 
-    private val ACCELERATION_FACTOR = 0.1f 
+    private var currentVelocity: Vector3f = Vector3f.ZERO 
 
-    private val MAX_HORIZONTAL_SPEED: Float = 0.5f
-    private val MAX_VERTICAL_SPEED: Float = 0.5f
+    private val FRICTION_FACTOR = 0.9f 
+    private val ACCELERATION_FACTOR = 0.15f 
+    private val MAX_HORIZONTAL_SPEED: Float = 0.4f 
+    private val MAX_VERTICAL_SPEED: Float = 0.4f   
+
+    private fun toRadians(degrees: Double): Double = degrees * (PI / 180.0)
 
     private val enableFlyAbilitiesPacket = UpdateAbilitiesPacket().apply {
         playerPermission = PlayerPermission.OPERATOR
@@ -48,7 +49,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                 listOf(
                     Ability.BUILD, Ability.MINE, Ability.DOORS_AND_SWITCHES,
                     Ability.OPEN_CONTAINERS, Ability.ATTACK_PLAYERS, Ability.ATTACK_MOBS,
-                    Ability.OPERATOR_COMMANDS, Ability.MAY_FLY,
+                    Ability.OPERATOR_COMMANDS, Ability.MAY_FLY, 
                     Ability.FLY_SPEED, Ability.WALK_SPEED
                 )
             )
@@ -71,7 +72,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                 )
             )
             walkSpeed = 0.1f
-            flySpeed = 0.0f
+            flySpeed = 0.0f 
         })
     }
 
@@ -80,12 +81,12 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
         if (!isSessionCreated) { 
             return
         }
-        session.localPlayer?.let { localPlayer -> 
+        session.localPlayer?.let { localPlayer ->
             enableFlyAbilitiesPacket.uniqueEntityId = localPlayer.uniqueEntityId
-            session.clientBound(enableFlyAbilitiesPacket) 
+            session.clientBound(enableFlyAbilitiesPacket)
         }
-        currentVelocity = Vector3f.ZERO
-        isFlyingActive = false
+        currentVelocity = Vector3f.ZERO 
+        isFlyingActive = false 
     }
 
     override fun onDisabled() {
@@ -93,12 +94,12 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
         if (!isSessionCreated) { 
             return
         }
-        session.localPlayer?.let { localPlayer -> 
+        session.localPlayer?.let { localPlayer ->
             disableFlyAbilitiesPacket.uniqueEntityId = localPlayer.uniqueEntityId
-            session.clientBound(disableFlyAbilitiesPacket) 
+            session.clientBound(disableFlyAbilitiesPacket)
         }
-        landPlayer()
-        currentVelocity = Vector3f.ZERO
+        landPlayer() 
+        currentVelocity = Vector3f.ZERO 
         isFlyingActive = false
     }
 
@@ -113,11 +114,11 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                 position = landingPosition
                 rotation = localPlayer.vec3Rotation
                 mode = MovePlayerPacket.Mode.NORMAL
-                isOnGround = true
+                isOnGround = true 
                 tick = localPlayer.tickExists
             }
-            repeat(5) {
-                session.serverBound(movePacket) 
+            repeat(5) { 
+                session.serverBound(movePacket)
             }
         }
     }
@@ -136,23 +137,28 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
 
         if (packet is PlayerAuthInputPacket && isEnabled) {
             if (!isSessionCreated) { 
-                return 
+                return
             }
 
             if (packet.inputData.contains(PlayerAuthInputData.START_FLYING)) {
-                isFlyingActive = true
-                interceptablePacket.intercept()
-                return
+                if (!isFlyingActive) { 
+                    isFlyingActive = true
+                    currentVelocity = Vector3f.ZERO 
+                }
+                interceptablePacket.intercept() 
+                return 
             }
             if (packet.inputData.contains(PlayerAuthInputData.STOP_FLYING)) {
-                isFlyingActive = false
-                landPlayer()
-                interceptablePacket.intercept()
-                return
+                if (isFlyingActive) { 
+                    isFlyingActive = false
+                    landPlayer() 
+                }
+                interceptablePacket.intercept() 
+                return 
             }
 
             if (isFlyingActive) {
-                interceptablePacket.intercept()
+                interceptablePacket.intercept() 
 
                 var targetVerticalMotion = 0f
                 if (packet.inputData.contains(PlayerAuthInputData.JUMPING)) {
@@ -160,12 +166,15 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                 } else if (packet.inputData.contains(PlayerAuthInputData.SNEAKING)) {
                     targetVerticalMotion = -verticalSpeed
                 }
+                else {
+                    targetVerticalMotion = currentVelocity.y * FRICTION_FACTOR
+                }
 
-                val inputMotionX: Float = packet.motion?.x ?: 0f
-                val inputMotionZ: Float = packet.motion?.y ?: 0f
+                val inputMotionX: Float = packet.motion?.x ?: 0f 
+                val inputMotionZ: Float = packet.motion?.y ?: 0f 
 
-                val yaw: Double = packet.rotation?.y?.toDouble()?.let { it * (PI / 180.0) } ?: 0.0
-                
+                val yaw: Double = packet.rotation?.y?.toDouble()?.let { it * (PI / 180.0) } ?: 0.0 
+
                 val targetHorizontalMotionX: Float = (-sin(yaw) * inputMotionZ.toDouble() + cos(yaw) * inputMotionX.toDouble()).toFloat() * flySpeed
                 val targetHorizontalMotionZ: Float = (cos(yaw) * inputMotionZ.toDouble() + sin(yaw) * inputMotionX.toDouble()).toFloat() * flySpeed
 
@@ -190,11 +199,11 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                 session.localPlayer.move(session.localPlayer.vec3Position.add(currentVelocity))
 
                 val newPlayerAuthInputPacket = PlayerAuthInputPacket().apply {
-                    position = session.localPlayer.vec3Position
+                    position = session.localPlayer.vec3Position 
                     rotation = packet.rotation ?: Vector3f.ZERO 
-                    motion = Vector2f.from(currentVelocity.x, currentVelocity.z) 
-                    tick = packet.tick
-                    inputData.addAll(packet.inputData)
+                    motion = org.cloudburstmc.math.vector.Vector2f.from(currentVelocity.x, currentVelocity.z) 
+                    tick = packet.tick 
+                    inputData.addAll(packet.inputData) 
                 }
                 session.serverBound(newPlayerAuthInputPacket)
             }
