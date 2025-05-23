@@ -4,12 +4,11 @@ import com.project.lumina.client.R
 import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.game.InterceptablePacket
-import com.project.lumina.client.game.entity.LocalPlayer
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.protocol.bedrock.data.Ability
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
-import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
+import org.cloudburstmc.protocol.bedrock.packet.RequestAbilityPacket
 import kotlin.math.cos
 import kotlin.math.PI
 import kotlin.math.sin
@@ -26,23 +25,23 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
     private var verticalSpeed by floatValue("Vertical Speed", 0.3f, 0.1f..1.0f)
     private var isFlyingActive = false
 
+    override fun onEnabled() {
+        super.onEnabled()
+        isFlyingActive = false
+    }
+
+    override fun onDisabled() {
+        super.onDisabled()
+        isFlyingActive = false
+        // При отключении модуля, просто перестаем контролировать движение.
+        // Игрок начнет падать по естественной гравитации игры.
+    }
+
     private fun toRadians(degrees: Double): Double = degrees * (PI / 180.0)
-
-    override fun onEnable() {
-        super.onEnable()
-        isFlyingActive = false
-    }
-
-    override fun onDisable() {
-        super.onDisable()
-        isFlyingActive = false
-        // При отключении модуля, можно сбросить скорость игрока до нуля, чтобы он начал падать.
-        // Это сделает выход из режима полета более "ванильным".
-        session.localPlayer.motion = Vector3f.ZERO
-    }
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
         val packet = interceptablePacket.packet
+        val localPlayer = session.localPlayer ?: return
 
         // Перехватываем RequestAbilityPacket, если клиент пытается запросить FLYING способность.
         // Это предотвратит отправку запроса на сервер, тем самым скрывая наш полет.
@@ -50,13 +49,6 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
             interceptablePacket.intercept()
             return
         }
-
-        // Мы больше не отправляем и не перехватываем UpdateAbilitiesPacket для установки способностей полета.
-        // Вместо этого, мы имитируем полет, управляя напрямую позицией игрока.
-        // if (packet is UpdateAbilitiesPacket) {
-        //     interceptablePacket.intercept()
-        //     return
-        // }
 
         if (packet is PlayerAuthInputPacket) {
             if (isEnabled) {
@@ -76,7 +68,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                                               packet.inputData.contains(PlayerAuthInputData.RIGHT)
 
                 // Активируем полет, если есть какое-либо движение или если игрок уже в воздухе (чтобы не упасть сразу после активации)
-                isFlyingActive = tryingToFlyUp || tryingToFlyDown || tryingToMoveHorizontal || !session.localPlayer.onGround
+                isFlyingActive = tryingToFlyUp || tryingToFlyDown || tryingToMoveHorizontal || !localPlayer.isOnGround
 
                 var motionX = 0.0f
                 var motionY = 0.0f
@@ -106,7 +98,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                         multiplier /= hypotenuse
                     }
 
-                    // Применяем горизонтальное движение
+                    // Применяем горизонтальное движение с учетом поворота головы
                     motionX = (-(moveStrafe * sin(yawRadians) - moveForward * cos(yawRadians)) * multiplier).toFloat()
                     motionZ = (-(moveStrafe * cos(yawRadians) + moveForward * sin(yawRadians)) * multiplier).toFloat()
                 }
@@ -117,8 +109,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                 } else if (tryingToFlyDown) {
                     motionY = -verticalSpeed
                 } else {
-                    // Имитация ванильной гравитации, если игрок не двигается вертикально
-                    // Это делает полет более похожим на ванильный креатив-режим, где игрок медленно опускается.
+                    // Имитация ванильной гравитации, если игрок не двигается вертикально и находится в воздухе
                     if (isFlyingActive) {
                         motionY = -0.098f // Примерное значение ванильной гравитации
                     }
@@ -130,7 +121,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                 motionZ += Random.nextDouble(-0.0001, 0.0001).toFloat()
 
                 // Вычисляем новую позицию на основе текущей и рассчитанного движения
-                val currentPosition = session.localPlayer.position
+                val currentPosition = localPlayer.position
                 val newPosition = Vector3f.from(
                     currentPosition.x + motionX,
                     currentPosition.y + motionY,
@@ -139,7 +130,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
 
                 // Отправляем MovePlayerPacket для обновления позиции игрока
                 val movePacket = MovePlayerPacket().apply {
-                    runtimeEntityId = session.localPlayer.uniqueEntityId
+                    runtimeEntityId = localPlayer.uniqueEntityId
                     position = newPosition
                     rotation = packet.rotation // Используем оригинальное вращение из входного пакета
                     mode = MovePlayerPacket.Mode.NORMAL
@@ -147,10 +138,6 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                     isOnGround = false // Всегда false при полете для скрытности
                 }
                 session.serverBound(movePacket)
-
-                // Обновляем motion локального игрока для внутренней согласованности
-                // (это не отправляется напрямую на сервер для режима полета)
-                session.localPlayer.motion = Vector3f.from(motionX, motionY, motionZ)
 
                 // Перехватываем оригинальный PlayerAuthInputPacket, поскольку мы сами обрабатываем движение
                 interceptablePacket.intercept()
