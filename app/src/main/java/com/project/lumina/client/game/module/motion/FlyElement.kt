@@ -35,9 +35,8 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
     private val FRICTION_FACTOR = 0.98f 
     private val ACCELERATION_FACTOR = 0.1f 
 
-    // Constants for clamping speeds
-    private val MAX_HORIZONTAL_SPEED: Float = 0.5f // Changed from const val to val
-    private val MAX_VERTICAL_SPEED: Float = 0.5f   // Changed from const val to val
+    private val MAX_HORIZONTAL_SPEED: Float = 0.5f
+    private val MAX_VERTICAL_SPEED: Float = 0.5f
 
     private val enableFlyAbilitiesPacket = UpdateAbilitiesPacket().apply {
         playerPermission = PlayerPermission.OPERATOR
@@ -78,9 +77,12 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
 
     override fun onEnabled() {
         super.onEnabled()
-        session?.localPlayer?.let { localPlayer ->
+        if (!isSessionCreated) { 
+            return
+        }
+        session.localPlayer?.let { localPlayer -> 
             enableFlyAbilitiesPacket.uniqueEntityId = localPlayer.uniqueEntityId
-            session?.clientBound(enableFlyAbilitiesPacket)
+            session.clientBound(enableFlyAbilitiesPacket) 
         }
         currentVelocity = Vector3f.ZERO
         isFlyingActive = false
@@ -88,9 +90,12 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
 
     override fun onDisabled() {
         super.onDisabled()
-        session?.localPlayer?.let { localPlayer ->
+        if (!isSessionCreated) { 
+            return
+        }
+        session.localPlayer?.let { localPlayer -> 
             disableFlyAbilitiesPacket.uniqueEntityId = localPlayer.uniqueEntityId
-            session?.clientBound(disableFlyAbilitiesPacket)
+            session.clientBound(disableFlyAbilitiesPacket) 
         }
         landPlayer()
         currentVelocity = Vector3f.ZERO
@@ -98,7 +103,10 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
     }
 
     private fun landPlayer() {
-        session?.localPlayer?.let { localPlayer ->
+        if (!isSessionCreated) { 
+            return
+        }
+        session.localPlayer?.let { localPlayer ->
             val landingPosition: Vector3f = localPlayer.vec3Position
             val movePacket = MovePlayerPacket().apply {
                 runtimeEntityId = localPlayer.uniqueEntityId
@@ -109,7 +117,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                 tick = localPlayer.tickExists
             }
             repeat(5) {
-                session?.serverBound(movePacket)
+                session.serverBound(movePacket) 
             }
         }
     }
@@ -127,6 +135,10 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
         }
 
         if (packet is PlayerAuthInputPacket && isEnabled) {
+            if (!isSessionCreated) { 
+                return 
+            }
+
             if (packet.inputData.contains(PlayerAuthInputData.START_FLYING)) {
                 isFlyingActive = true
                 interceptablePacket.intercept()
@@ -175,7 +187,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
 
                 currentVelocity = Vector3f.from(newVx, newVy, newVz)
 
-                session?.localPlayer?.move(session.localPlayer.vec3Position.add(currentVelocity))
+                session.localPlayer.move(session.localPlayer.vec3Position.add(currentVelocity))
 
                 val newPlayerAuthInputPacket = PlayerAuthInputPacket().apply {
                     position = session.localPlayer.vec3Position
@@ -184,7 +196,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                     tick = packet.tick
                     inputData.addAll(packet.inputData)
                 }
-                session?.serverBound(newPlayerAuthInputPacket)
+                session.serverBound(newPlayerAuthInputPacket)
             }
         }
     }
