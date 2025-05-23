@@ -52,7 +52,11 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
     override fun onEnabled() { // <-- Изменено с onEnable() на onEnabled()
         super.onEnabled()
         // Инициализируем FlightHandler при включении модуля
-        session?.let { FlightHandler.initialize(it.luminaRelaySession) } // <-- Передаем luminaRelaySession
+                session?.let { 
+            it.localPlayer?.let { localPlayer ->
+                FlightHandler.initialize(it.luminaRelaySession, localPlayer)
+            }
+        } // <-- Передаем luminaRelaySession
         // Отправляем пакеты способностей при включении, чтобы клиент мог летать
         session?.localPlayer?.let { localPlayer -> // <-- Безопасный доступ к localPlayer
             enableFlyAbilitiesPacket.uniqueEntityId = localPlayer.uniqueEntityId
@@ -95,7 +99,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
             // Передаем управление полетом FlightHandler'у
             // FlightHandler сам решит, нужно ли обрабатывать движение, основываясь на своем внутреннем состоянии isFlyingActive
             session?.localPlayer?.let { localPlayer ->
-                FlightHandler.handlePlayerInput(localPlayer, packet, flySpeed, verticalSpeed)
+                FlightHandler.handlePlayerInput(packet, flySpeed, verticalSpeed)
             }
 
             // Важно: перехватываем PlayerAuthInputPacket, чтобы предотвратить
