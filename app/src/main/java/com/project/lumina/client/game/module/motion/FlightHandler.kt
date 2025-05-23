@@ -54,7 +54,7 @@ object FlightHandler : LuminaRelayPacketListener {
 
     fun stopFlight() {
         isFlyingActive = false
-        currentSession?.localPlayer?.let { playerInstance: LocalPlayer -> // Changed localPlayer to playerInstance here
+        currentSession?.localPlayer?.let { playerInstance: LocalPlayer -> 
             val landingPosition: Vector3f = Vector3f.from(playerInstance.vec3Position.x, playerInstance.vec3Position.y, playerInstance.vec3Position.z)
             val movePacket = MovePlayerPacket().apply {
                 runtimeEntityId = playerInstance.uniqueEntityId
@@ -112,9 +112,9 @@ object FlightHandler : LuminaRelayPacketListener {
             targetVerticalMotion = currentVelocity.y * FRICTION_FACTOR * 0.5f 
         }
 
-        var newVx: Float = currentVelocity.x + (targetHorizontalMotionX - currentVelocity.x) * ACCELERATION_FACTOR 
-        var newVy: Float = currentVelocity.y + (targetVerticalMotion - currentVelocity.y) * ACCELERATION_FACTOR 
-        var newVz: Float = currentVelocity.z + (targetHorizontalMotionZ - currentVelocity.z) * ACCELERATION_FACTOR 
+        var newVx: Float = currentVelocity.x + (targetHorizontalMotionX - currentVelocity.x) * ACCELERATION_FACTOR // Changed to var
+        var newVy: Float = currentVelocity.y + (targetVerticalMotion - currentVelocity.y) * ACCELERATION_FACTOR // Changed to var
+        var newVz: Float = currentVelocity.z + (targetHorizontalMotionZ - currentVelocity.z) * ACCELERATION_FACTOR // Changed to var
 
         if (inputMotionX == 0f && inputMotionZ == 0f) { 
             newVx *= FRICTION_FACTOR
@@ -130,10 +130,10 @@ object FlightHandler : LuminaRelayPacketListener {
 
         currentVelocity = Vector3f.from(newVx, newVy, newVz)
 
-        playerInstance.vec3Position = playerInstance.vec3Position.add(currentVelocity) // Changed localPlayer to playerInstance
+        playerInstance.vec3Position = playerInstance.vec3Position.add(currentVelocity) 
     }
 
-    private fun shouldSpoofOnGround(playerInstance: LocalPlayer): Boolean { // Changed localPlayer to playerInstance
+    private fun shouldSpoofOnGround(playerInstance: LocalPlayer): Boolean { 
         val isVerticallyStable: Boolean = currentVelocity.y > -VERTICAL_SPEED_TOLERANCE_FOR_GROUND && currentVelocity.y < VERTICAL_SPEED_TOLERANCE_FOR_GROUND
         
         if (tickCounter % GROUND_SPOOF_INTERVAL == 0L || isVerticallyStable) {
@@ -152,7 +152,7 @@ object FlightHandler : LuminaRelayPacketListener {
     }
 
     override fun beforeClientBound(packet: BedrockPacket): Boolean {
-        currentSession?.localPlayer?.let { playerInstance: LocalPlayer -> // Changed localPlayer to playerInstance
+        currentSession?.localPlayer?.let { playerInstance: LocalPlayer -> 
             if (packet is MovePlayerPacket && packet.runtimeEntityId == playerInstance.runtimeEntityId && isFlyingActive) {
                 playerInstance.vec3Position = packet.position 
                 return true 
