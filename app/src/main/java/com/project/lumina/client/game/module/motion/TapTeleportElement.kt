@@ -16,7 +16,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
     displayNameResId = R.string.module_tapteleport_display_name
 ) {
 
-    // Используем делегаты из Configurable
+    // Настройки через делегаты
     private val teleportOffset by floatValue("Offset", 0.0f, -1.0f..5.0f)
     private val debugMode by boolValue("Debug Mode", false)
 
@@ -24,41 +24,69 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
         if (!isEnabled) return
 
         val packet = interceptablePacket.packet
-        val localPlayer = session.localPlayer ?: return
+        val localPlayer = session.localPlayer ?: run {
+            if (debugMode) session.displayClientMessage("§l§b[TapTeleport] §r§cNo local player!")
+            return
+        }
 
-        if (packet is PlayerActionPacket && packet.action == PlayerActionType.START_BREAK) {
-            val blockPosition = packet.blockPosition
-            val face = packet.face
+        // Проверяем все действия с блоками
+        if (packet is PlayerActionPacket) {
+            when (packet.action) {
+                PlayerActionType.START_BREAK, PlayerActionType.INTERACT_BLOCK -> {
+                    val blockPosition = packet.blockPosition
+                    val face = packet.face
 
-            val playerY = localPlayer.vec3Position.y
-            val eyeHeight = localPlayer.eyeHeight ?: 1.6f // Значение по умолчанию
+                    if (debugMode) {
+                        session.displayClientMessage("§l§b[TapTeleport] §r§aDetected action: ${packet.action}, pos: $blockPosition, face: $face")
+                    }
 
-            val targetX = blockPosition.x.toFloat() + 0.5f
-            val targetZ = blockPosition.z.toFloat() + 0.5f
-            var teleportToY = when (face) {
-                1 -> blockPosition.y.toFloat() + 1.0f // Top face
-                0 -> blockPosition.y.toFloat() - eyeHeight - 0.1f // Bottom face
-                else -> blockPosition.y.toFloat() + 1.0f // Side faces
-            }.let { if (it < playerY - 2f) playerY else it } // Защита от падения
+                    val targetX = blockPosition.x.toFloat() + 0.5f
+                    val targetZ = blockPosition.z.toFloat() + 0.5f
+                    val baseY = blockPosition.y.toFloat()
+                    val teleportToY = when (face) {
+                        1 -> baseY + 1.0f + teleportOffset // Верх
+                        0 -> baseY - 1.0f + teleportOffset // Низ (с корректировкой)
+                        else -> baseY + 1.0f + teleportOffset // Боковые
+                    }.coerceAtLeast(localPlayer.vec3Position.y - 2f) // Защита от падения
 
-            teleportToY += teleportOffset // Прямой доступ к значению через делегат
+                    val newPosition = Vector3f.from(targetX, teleportToY, targetZ)
 
-            val newPosition = Vector3f.from(targetX, teleportToY, targetZ)
+                    val movePacket = MovePlayerPacket().apply {
+                        runtimeEntityId = localPlayer.uniqueEntityId
+                        position = newPosition
+                        rotation = localPlayer.vec3Rotation
+                        mode = MovePlayerPacket.Mode.TELEPORT
+                        onGround = true
+                    }
 
-            val movePlayerPacket = MovePlayerPacket().apply {
-                runtimeEntityId = localPlayer.uniqueEntityId
-                position = newPosition
-                rotation = localPlayer.vec3Rotation
-                mode = MovePlayerPacket.Mode.TELEPORT
-                onGround = true
+                    session.serverBound(movePacket)
+                    if (debugMode) {
+                        session.displayClientMessage("§l§b[TapTeleport] §r§aSent teleport to $newPosition")
+                    }
+
+                    // Не прерываем оригинальный пакет, чтобы не блокировать взаимодействие
+                    // interceptablePacket.intercept() // Комментируем для теста
+                }
+                else -> {
+                    if (debugMode) {
+                        session.displayClientMessage("§l§b[TapTeleport] §r§cUnsupported action: ${packet.action}")
+                    }
+                }
             }
+        }
+    }
 
-            session.serverBound(movePlayerPacket)
-            if (debugMode) { // Прямой доступ к значению через делегат
-                session.displayClientMessage("§l§b[TapTeleport] §r§aTeleported to $newPosition, face: $face, offset: $teleportOffset")
-            }
+    override fun onEnabled() {
+        super.onEnabled()
+        if (debugMode) {
+            session.displayClientMessage("§l§b[TapTeleport] §r§aModule enabled")
+        }
+    }
 
-            interceptablePacket.intercept()
+    override fun onDisabled() {
+        super.onDisabled()
+        if (debugMode) {
+            session.displayClientMessage("§l§b[TapTeleport] §r§aModule disabled")
         }
     }
 }
