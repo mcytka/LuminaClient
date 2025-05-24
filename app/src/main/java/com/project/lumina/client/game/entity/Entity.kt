@@ -8,7 +8,6 @@ import org.cloudburstmc.protocol.bedrock.data.AttributeData
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataMap
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityFlag
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityLinkData
-import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket
 import org.cloudburstmc.protocol.bedrock.packet.MobEffectPacket
 import org.cloudburstmc.protocol.bedrock.packet.MoveEntityAbsolutePacket
@@ -102,9 +101,6 @@ open class Entity(open val runtimeEntityId: Long, open val uniqueEntityId: Long)
 
     val vec3Rotation: Vector3f
         get() = Vector3f.from(rotationPitch, rotationYaw, rotationYawHead)
-
-    open val eyeHeight: Float
-        get() = metadata.get<Float>(EntityDataTypes.HEIGHT) ?: 1.62f // Default Minecraft player eye height
 
     open val isSneaking: Boolean
         get() = metadata.flags.contains(EntityFlag.SNEAKING)
