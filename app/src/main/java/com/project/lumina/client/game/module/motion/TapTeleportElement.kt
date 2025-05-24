@@ -32,7 +32,23 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
 
             blockAction?.let { action ->
                 val pos = action.blockPosition
-                lastTapPosition = Vector3f.from(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat())
+                val x = pos.x.toFloat()
+                val y = pos.y.toFloat()
+                val z = pos.z.toFloat()
+
+                // Face values: 0=bottom, 1=top, 2=north, 3=south, 4=west, 5=east
+                val offset = when (action.face) {
+                    0 -> Vector3f.from(0f, -1f, 0f) // bottom
+                    1 -> Vector3f.from(0f, 1f, 0f)  // top
+                    2 -> Vector3f.from(0f, 0f, -1f) // north
+                    3 -> Vector3f.from(0f, 0f, 1f)  // south
+                    4 -> Vector3f.from(-1f, 0f, 0f) // west
+                    5 -> Vector3f.from(1f, 0f, 0f)  // east
+                    else -> Vector3f.from(0f, 1f, 0f) // default top
+                }
+
+                val targetPos = Vector3f.from(x + offset.x, y + offset.y, z + offset.z)
+                lastTapPosition = targetPos
                 teleportTo(lastTapPosition!!)
                 lastTapPosition = null
             }
