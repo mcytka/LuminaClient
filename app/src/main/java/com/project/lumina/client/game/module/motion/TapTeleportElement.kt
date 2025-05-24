@@ -16,7 +16,6 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
     displayNameResId = R.string.module_tapteleport_display_name
 ) {
 
-    // Настройки через делегаты
     private val teleportOffset by floatValue("Offset", 0.0f, -1.0f..5.0f)
     private val debugMode by boolValue("Debug Mode", false)
 
@@ -29,48 +28,38 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
             return
         }
 
-        // Проверяем все действия с блоками
         if (packet is PlayerActionPacket) {
-            when (packet.action) {
-                PlayerActionType.START_BREAK, PlayerActionType.INTERACT_BLOCK -> {
-                    val blockPosition = packet.blockPosition
-                    val face = packet.face
+            if (debugMode) {
+                session.displayClientMessage("§l§b[TapTeleport] §r§aDetected action: ${packet.action}, pos: ${packet.blockPosition}, face: ${packet.face}")
+            }
 
-                    if (debugMode) {
-                        session.displayClientMessage("§l§b[TapTeleport] §r§aDetected action: ${packet.action}, pos: $blockPosition, face: $face")
-                    }
+            // Триггер на взаимодействие с блоком или использование предмета
+            if (packet.action == PlayerActionType.BLOCK_INTERACT || packet.action == PlayerActionType.START_ITEM_USE_ON) {
+                val blockPosition = packet.blockPosition
+                val face = packet.face
 
-                    val targetX = blockPosition.x.toFloat() + 0.5f
-                    val targetZ = blockPosition.z.toFloat() + 0.5f
-                    val baseY = blockPosition.y.toFloat()
-                    val teleportToY = when (face) {
-                        1 -> baseY + 1.0f + teleportOffset // Верх
-                        0 -> baseY - 1.0f + teleportOffset // Низ (с корректировкой)
-                        else -> baseY + 1.0f + teleportOffset // Боковые
-                    }.coerceAtLeast(localPlayer.vec3Position.y - 2f) // Защита от падения
+                val targetX = blockPosition.x.toFloat() + 0.5f
+                val targetZ = blockPosition.z.toFloat() + 0.5f
+                val baseY = blockPosition.y.toFloat()
+                val teleportToY = when (face) {
+                    1 -> baseY + 1.0f + teleportOffset // Верх
+                    0 -> baseY - 1.0f + teleportOffset // Низ
+                    else -> baseY + 1.0f + teleportOffset // Боковые
+                }.coerceAtLeast(localPlayer.vec3Position.y - 2f) // Защита от падения
 
-                    val newPosition = Vector3f.from(targetX, teleportToY, targetZ)
+                val newPosition = Vector3f.from(targetX, teleportToY, targetZ)
 
-                    val movePacket = MovePlayerPacket().apply {
-                        runtimeEntityId = localPlayer.uniqueEntityId
-                        position = newPosition
-                        rotation = localPlayer.vec3Rotation
-                        mode = MovePlayerPacket.Mode.TELEPORT
-                        onGround = true
-                    }
-
-                    session.serverBound(movePacket)
-                    if (debugMode) {
-                        session.displayClientMessage("§l§b[TapTeleport] §r§aSent teleport to $newPosition")
-                    }
-
-                    // Не прерываем оригинальный пакет, чтобы не блокировать взаимодействие
-                    // interceptablePacket.intercept() // Комментируем для теста
+                val movePacket = MovePlayerPacket().apply {
+                    runtimeEntityId = localPlayer.uniqueEntityId
+                    position = newPosition
+                    rotation = localPlayer.vec3Rotation
+                    mode = MovePlayerPacket.Mode.TELEPORT
+                    onGround = true
                 }
-                else -> {
-                    if (debugMode) {
-                        session.displayClientMessage("§l§b[TapTeleport] §r§cUnsupported action: ${packet.action}")
-                    }
+
+                session.serverBound(movePacket)
+                if (debugMode) {
+                    session.displayClientMessage("§l§b[TapTeleport] §r§aTeleported to $newPosition")
                 }
             }
         }
