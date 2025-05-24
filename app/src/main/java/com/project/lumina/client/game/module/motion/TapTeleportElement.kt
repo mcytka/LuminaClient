@@ -8,7 +8,6 @@ import com.project.lumina.client.game.entity.LocalPlayer
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
-import org.cloudburstmc.protocol.bedrock.packet.InteractPacket
 import org.cloudburstmc.protocol.bedrock.packet.MoveEntityAbsolutePacket
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
@@ -66,16 +65,6 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
                 session.updatePlayerPosition(packet.position.x, packet.position.z)
                 val yawRadians = (packet.rotation.y * Math.PI / 180).toFloat()
                 session.updatePlayerRotation(yawRadians)
-            }
-            is InteractPacket -> {
-                if (debugMode) {
-                    session.displayClientMessage("InteractPacket: action=${packet.action}, runtimeId=${packet.runtimeEntityId}, pos=${packet.position}")
-                }
-                if (packet.action == InteractPacket.Action.INTERACT) {
-                    // Используем позицию игрока как временное решение
-                    val blockPos = Vector3i.from(packet.position.x.toInt(), packet.position.y.toInt() - 1, packet.position.z.toInt())
-                    teleportToBlock(localPlayer, blockPos)
-                }
             }
             is MoveEntityAbsolutePacket -> {
                 if (debugMode) {
