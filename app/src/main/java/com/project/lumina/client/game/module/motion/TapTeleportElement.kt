@@ -7,6 +7,7 @@ import com.project.lumina.client.constructors.CheatCategory
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
+import org.cloudburstmc.protocol.bedrock.data.PlayerActionType
 
 class TapTeleportElement(iconResId: Int = R.drawable.ic_teleport) : Element(
     name = "TapTeleport",
@@ -22,20 +23,19 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_teleport) : Element(
 
         val packet = interceptablePacket.packet
 
-        // Listen for player input packets to detect tap on block
         if (packet is PlayerAuthInputPacket) {
-            // Here, you would detect the tap event and get the block position tapped.
-            // For demonstration, we assume lastTapPosition is set externally when player taps.
+            // Parse playerActions to find block interaction
+            val blockAction = packet.playerActions.firstOrNull { action ->
+                action.actionType == PlayerActionType.BLOCK_INTERACT
+            }
 
-            lastTapPosition?.let { targetPos ->
-                teleportTo(targetPos)
+            blockAction?.let { action ->
+                val pos = action.blockPosition
+                lastTapPosition = Vector3f.from(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat())
+                teleportTo(lastTapPosition!!)
                 lastTapPosition = null
             }
         }
-    }
-
-    fun setTapPosition(position: Vector3f) {
-        lastTapPosition = position
     }
 
     private fun teleportTo(position: Vector3f) {
