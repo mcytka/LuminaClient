@@ -9,7 +9,7 @@ import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import org.cloudburstmc.protocol.bedrock.data.PlayerActionType
 
-class TapTeleportElement(iconResId: Int = R.drawable.ic_teleport) : Element(
+class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
     name = "TapTeleport",
     category = CheatCategory.Motion,
     iconResId,
