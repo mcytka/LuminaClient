@@ -5,6 +5,8 @@ import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.game.InterceptablePacket
 import com.project.lumina.client.game.entity.LocalPlayer
+import com.project.lumina.client.game.world.World
+import com.project.lumina.client.overlay.SessionStatsOverlay
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
@@ -23,28 +25,46 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
     private val teleportOffset by floatValue("Offset", 0.0f, -1.0f..5.0f)
     private val debugMode by boolValue("Debug Mode", false)
 
+    private var statsOverlay: SessionStatsOverlay? = null
+    private val world: World = World(session) // Предполагаем, что World доступен через session
+
+    override fun onEnabled() {
+        super.onEnabled()
+        if (isSessionCreated) {
+            session.launchOnMain {
+                statsOverlay = session.showSessionStatsOverlay(listOf("TapTeleport: Enabled"))
+                updateDebugDisplay("Module enabled")
+            }
+        }
+    }
+
+    override fun onDisabled() {
+        super.onDisabled()
+        statsOverlay?.dismiss()
+        statsOverlay = null
+    }
+
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
-        // Тестовая отладка вызова
-        sendDebugMessage("§b[TapTeleport] §r§abeforePacketBound called")
+        updateDebugDisplay("Packet received: ${interceptablePacket.packet.javaClass.simpleName}")
         if (!isEnabled) {
-            sendDebugMessage("§b[TapTeleport] §r§cModule disabled")
+            updateDebugDisplay("Module disabled")
             return
         }
 
         val packet = interceptablePacket.packet
         val localPlayer = session.localPlayer as? LocalPlayer ?: run {
-            sendDebugMessage("§b[TapTeleport] §r§cNo local player!")
+            updateDebugDisplay("No local player!")
             return
         }
 
-        sendDebugMessage("§b[TapTeleport] §r§aLocalPlayer: runtimeId=${localPlayer.runtimeEntityId}, pos=${localPlayer.vec3Position}")
+        updateDebugDisplay("LocalPlayer: runtimeId=${localPlayer.runtimeEntityId}, pos=${localPlayer.vec3Position}")
         if (localPlayer.movementServerAuthoritative) {
-            sendDebugMessage("§b[TapTeleport] §r§cServer controls movement!")
+            updateDebugDisplay("Server controls movement!")
         }
 
         when (packet) {
             is PlayerAuthInputPacket -> {
-                sendDebugMessage("§b[TapTeleport] §r§aPlayerAuthInputPacket: inputs=${packet.inputData}")
+                updateDebugDisplay("PlayerAuthInputPacket: inputs=${packet.inputData}")
                 if (packet.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)) {
                     val blockPos = Vector3i.from(
                         packet.position.x.toInt(),
@@ -55,10 +75,18 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
                 }
             }
             is InteractPacket -> {
-                sendDebugMessage("§b[TapTeleport] §r§aInteractPacket: action=${packet.action}")
+                updateDebugDisplay("InteractPacket: action=${packet.action}")
                 if (packet.action == InteractPacket.Action.RIGHT_CLICK_BLOCK) {
                     val blockPos = Vector3i.from(packet.x.toInt(), packet.y.toInt(), packet.z.toInt())
                     teleportToBlock(localPlayer, blockPos)
+                }
+            }
+            is MovePlayerPacket -> {
+                updateDebugDisplay("MovePlayerPacket detected: runtimeId=${packet.runtimeEntityId}, pos=${packet.position}")
+                // Тестовый триггер для проверки собственных пакетов
+                if (packet.runtimeEntityId == localPlayer.runtimeEntityId) {
+                    val newPos = Vector3i.from(packet.position.x.toInt(), packet.position.y.toInt(), packet.position.z.toInt())
+                    teleportToBlock(localPlayer, newPos)
                 }
             }
         }
@@ -67,24 +95,34 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
     private fun teleportToBlock(localPlayer: LocalPlayer, blockPosition: Vector3i) {
         val targetX = blockPosition.x.toFloat() + 0.5f
         val targetZ = blockPosition.z.toFloat() + 0.5f
-        val teleportToY = blockPosition.y.toFloat() + 1.0f + teleportOffset // Убрали eyeHeight
+        val teleportToY = blockPosition.y.toFloat() + 1.0f + teleportOffset
 
-        val newPosition = Vector3f.from(targetX, teleportToY, targetZ)
-        val movePacket = MovePlayerPacket().apply {
-            runtimeEntityId = localPlayer.runtimeEntityId
-            position = newPosition
-            rotation = localPlayer.vec3Rotation
-            mode = if (localPlayer.movementServerAuthoritative) MovePlayerPacket.Mode.NORMAL else MovePlayerPacket.Mode.TELEPORT
-            onGround = true
+        // Проверка валидности позиции через World
+        val blockId = world.getBlockId(targetX.toInt(), teleportToY.toInt(), targetZ.toInt())
+        if (blockId == 0) { // Воздух
+            val newPosition = Vector3f.from(targetX, teleportToY, targetZ)
+            localPlayer.move(newPosition) // Клиентская симуляция
+            updateDebugDisplay("Client moved to $newPosition")
+
+            val movePacket = MovePlayerPacket().apply {
+                runtimeEntityId = localPlayer.runtimeEntityId
+                position = newPosition
+                rotation = localPlayer.vec3Rotation
+                mode = if (localPlayer.movementServerAuthoritative) MovePlayerPacket.Mode.NORMAL else MovePlayerPacket.Mode.TELEPORT
+                onGround = true
+            }
+
+            session.serverBound(movePacket)
+            updateDebugDisplay("Server teleport sent to $newPosition, mode=${movePacket.mode}")
+        } else {
+            updateDebugDisplay("Invalid teleport position: blockId=$blockId at $blockPosition")
         }
+    }
 
-        // Попробуем клиентскую симуляцию
-        localPlayer.move(newPosition)
-        sendDebugMessage("§b[TapTeleport] §r§aClient moved to $newPosition")
-
-        // Отправка на сервер
-        session.serverBound(movePacket)
-        sendDebugMessage("§b[TapTeleport] §r§aServer teleport sent to $newPosition, mode=${movePacket.mode}")
+    private fun updateDebugDisplay(message: String) {
+        if (debugMode && statsOverlay != null) {
+            statsOverlay?.updateStats(listOf(message))
+        }
     }
 
     private fun sendDebugMessage(message: String) {
@@ -100,15 +138,5 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
         } catch (e: Exception) {
             // Игнорируем ошибку без вывода
         }
-    }
-
-    override fun onEnabled() {
-        super.onEnabled()
-        sendDebugMessage("§b[TapTeleport] §r§aModule enabled")
-    }
-
-    override fun onDisabled() {
-        super.onDisabled()
-        sendDebugMessage("§b[TapTeleport] §r§aModule disabled")
     }
 }
