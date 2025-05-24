@@ -10,6 +10,7 @@ import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import org.cloudburstmc.protocol.bedrock.packet.InteractPacket
+import org.cloudburstmc.protocol.bedrock.packet.MoveEntityAbsolutePacket
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 
@@ -43,10 +44,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
         updateDebugDisplay("Packet received: ${interceptablePacket.packet.javaClass.simpleName}")
-        if (!isEnabled) {
-            updateDebugDisplay("Module disabled")
-            return
-        }
+        if (!isEnabled || !isSessionCreated) return
 
         val packet = interceptablePacket.packet
         val localPlayer = session.localPlayer as? LocalPlayer ?: run {
@@ -61,21 +59,28 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
 
         when (packet) {
             is PlayerAuthInputPacket -> {
-                updateDebugDisplay("PlayerAuthInputPacket: inputs=${packet.inputData}")
+                updateDebugDisplay("PlayerAuthInputPacket: inputs=${packet.inputData}, pos=${packet.position}")
                 if (packet.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)) {
-                    val blockPos = Vector3i.from(
-                        packet.position.x.toInt(),
-                        packet.position.y.toInt(),
-                        packet.position.z.toInt()
-                    )
+                    val blockPos = Vector3i.from(packet.position.x.toInt(), packet.position.y.toInt(), packet.position.z.toInt())
                     teleportToBlock(localPlayer, blockPos)
                 }
+                // Обновление позиции игрока (как в Minimap)
+                session.updatePlayerPosition(packet.position.x, packet.position.z)
+                val yawRadians = (packet.rotation.y * Math.PI / 180).toFloat()
+                session.updatePlayerRotation(yawRadians)
             }
             is InteractPacket -> {
                 updateDebugDisplay("InteractPacket: action=${packet.action}")
                 if (packet.action == InteractPacket.Action.INTERACT_BLOCK) {
-                    val blockPos = Vector3i.from(packet.blockPosition.x, packet.blockPosition.y, packet.blockPosition.z)
+                    val blockPos = packet.blockPosition
                     teleportToBlock(localPlayer, blockPos)
+                }
+            }
+            is MoveEntityAbsolutePacket -> {
+                updateDebugDisplay("MoveEntityAbsolutePacket: runtimeId=${packet.runtimeEntityId}, pos=${packet.position}")
+                if (packet.runtimeEntityId == localPlayer.runtimeEntityId) {
+                    val newPos = Vector3i.from(packet.position.x.toInt(), packet.position.y.toInt(), packet.position.z.toInt())
+                    teleportToBlock(localPlayer, newPos)
                 }
             }
             is MovePlayerPacket -> {
