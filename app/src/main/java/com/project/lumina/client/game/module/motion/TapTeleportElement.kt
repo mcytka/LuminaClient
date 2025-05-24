@@ -26,7 +26,6 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
     displayNameResId = R.string.module_tap_teleport_display_name
 ) {
 
-    private var lastTapPosition: Vector3f? = null
     private var noClipEnabled = false
     private val coroutineScope = CoroutineScope(Dispatchers.Default)
     private var noClipJob: Job? = null
@@ -87,7 +86,6 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
         val packet = interceptablePacket.packet
 
         if (packet is PlayerAuthInputPacket) {
-            // Parse playerActions to find block interaction
             val blockAction = packet.playerActions.firstOrNull { action ->
                 action.action == PlayerActionType.BLOCK_INTERACT ||
                 action.action == PlayerActionType.START_BREAK
@@ -95,29 +93,44 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
 
             blockAction?.let { action ->
                 val pos = action.blockPosition
-                val x = pos.x.toFloat()
-                val y = pos.y.toFloat()
-                val z = pos.z.toFloat()
+                val face = action.face
 
-                // Face values: 0=bottom, 1=top, 2=north, 3=south, 4=west, 5=east
-                val offset = when (action.face) {
-                    0 -> Vector3f.from(0f, 2f, 0f)  // bottom - teleport on top of block with offset 2
-                    1 -> Vector3f.from(0f, 2f, 0f)  // top - teleport on top of block with offset 2
-                    2 -> Vector3f.from(0f, 0f, -1f) // north
-                    3 -> Vector3f.from(0f, 0f, 1f)  // south
-                    4 -> Vector3f.from(-1f, 0f, 0f) // west
-                    5 -> Vector3f.from(1f, 0f, 0f)  // east
-                    else -> Vector3f.from(0f, 2f, 0f) // default top
+                // Calculate base position centered on block
+                var x = pos.x.toFloat() + 0.5f
+                var y = pos.y.toFloat()
+                var z = pos.z.toFloat() + 0.5f
+
+                // Adjust position based on face
+                when (face) {
+                    0 -> y -= 1f // bottom face, move down
+                    1 -> y += 1f // top face, move up
+                    2 -> z -= 1f // north face
+                    3 -> z += 1f // south face
+                    4 -> x -= 1f // west face
+                    5 -> x += 1f // east face
                 }
 
-                val targetPos = Vector3f.from(x + offset.x, y + offset.y, z + offset.z)
-                lastTapPosition = targetPos
+                // Check if block above target position is air (empty)
+                val blockAboveIsAir = isBlockAir(pos.x, pos.y + 1, pos.z)
+
+                // If block above is not air, adjust y to avoid getting stuck
+                if (!blockAboveIsAir) {
+                    y += 1f
+                }
+
+                val targetPos = Vector3f.from(x, y + 2f, z) // add 2 to y for player height offset
+
                 enableNoClip()
-                teleportTo(lastTapPosition!!)
-                lastTapPosition = null
+                teleportTo(targetPos)
                 scheduleDisableNoClip()
             }
         }
+    }
+
+    private fun isBlockAir(x: Int, y: Int, z: Int): Boolean {
+        // Placeholder: Implement actual block check logic here
+        // Return true if block at (x, y, z) is air/empty, false otherwise
+        return true
     }
 
     private fun enableNoClip() {
@@ -139,7 +152,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
     private fun scheduleDisableNoClip() {
         noClipJob?.cancel()
         noClipJob = coroutineScope.launch {
-            delay(500) // disable noclip after 0.5 seconds to better match teleportation duration
+            delay(500) // disable noclip after 0.5 seconds
             disableNoClip()
         }
     }
