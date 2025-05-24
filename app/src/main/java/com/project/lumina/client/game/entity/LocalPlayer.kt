@@ -39,9 +39,6 @@ class LocalPlayer(val session: NetBound) : Player(0L, 0L, UUID.randomUUID(), "")
 
     override val inventory = PlayerInventory(this)
 
-    override val eyeHeight: Float
-        get() = super.eyeHeight
-
     var openContainer: AbstractInventory? = null
         private set
 
