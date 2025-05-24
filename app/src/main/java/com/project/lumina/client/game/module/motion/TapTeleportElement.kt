@@ -38,8 +38,8 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
 
                 // Face values: 0=bottom, 1=top, 2=north, 3=south, 4=west, 5=east
                 val offset = when (action.face) {
-                    0 -> Vector3f.from(0f, -1f, 0f) // bottom
-                    1 -> Vector3f.from(0f, 1f, 0f)  // top
+                    0 -> Vector3f.from(0f, 1f, 0f)  // bottom - teleport on top of block
+                    1 -> Vector3f.from(0f, 0.1f, 0f)  // top - teleport slightly above block position
                     2 -> Vector3f.from(0f, 0f, -1f) // north
                     3 -> Vector3f.from(0f, 0f, 1f)  // south
                     4 -> Vector3f.from(-1f, 0f, 0f) // west
