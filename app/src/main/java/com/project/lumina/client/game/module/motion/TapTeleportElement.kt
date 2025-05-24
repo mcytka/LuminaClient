@@ -3,7 +3,6 @@ package com.project.lumina.client.game.module.motion
 import com.project.lumina.client.R
 import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.constructors.Element
-import com.project.lumina.client.constructors.Value
 import com.project.lumina.client.game.InterceptablePacket
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.protocol.bedrock.data.PlayerActionType
@@ -17,15 +16,9 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
     displayNameResId = R.string.module_tapteleport_display_name
 ) {
 
-    // Определяем настройки как экземпляры Value
-    private val teleportOffset = Value("Offset", 0.0f, -1.0f..5.0f).also { values.add(it) }
-    private val debugMode = Value("Debug Mode", false).also { values.add(it) }
-
-    init {
-        // Убедимся, что значения добавлены в список
-        if (!values.contains(teleportOffset)) values.add(teleportOffset)
-        if (!values.contains(debugMode)) values.add(debugMode)
-    }
+    // Используем делегаты из Configurable
+    private val teleportOffset by floatValue("Offset", 0.0f, -1.0f..5.0f)
+    private val debugMode by boolValue("Debug Mode", false)
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
         if (!isEnabled) return
@@ -48,7 +41,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
                 else -> blockPosition.y.toFloat() + 1.0f // Side faces
             }.let { if (it < playerY - 2f) playerY else it } // Защита от падения
 
-            teleportToY += teleportOffset.value // Доступ к значению через .value
+            teleportToY += teleportOffset // Прямой доступ к значению через делегат
 
             val newPosition = Vector3f.from(targetX, teleportToY, targetZ)
 
@@ -61,8 +54,8 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
             }
 
             session.serverBound(movePlayerPacket)
-            if (debugMode.value) { // Доступ к значению через .value
-                session.displayClientMessage("§l§b[TapTeleport] §r§aTeleported to $newPosition, face: $face, offset: ${teleportOffset.value}")
+            if (debugMode) { // Прямой доступ к значению через делегат
+                session.displayClientMessage("§l§b[TapTeleport] §r§aTeleported to $newPosition, face: $face, offset: $teleportOffset")
             }
 
             interceptablePacket.intercept()
