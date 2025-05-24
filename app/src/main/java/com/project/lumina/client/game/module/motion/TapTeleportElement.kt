@@ -69,10 +69,10 @@ class TapTeleportElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : El
             }
             is InteractPacket -> {
                 if (debugMode) {
-                    session.displayClientMessage("InteractPacket: action=${packet.action}, pos=${packet.position}, targetId=${packet.targetRuntimeEntityId}")
+                    session.displayClientMessage("InteractPacket: action=${packet.action}, runtimeId=${packet.runtimeEntityId}, pos=(${packet.x}, ${packet.y}, ${packet.z})")
                 }
                 if (packet.action == InteractPacket.Action.INTERACT) {
-                    val blockPos = Vector3i.from(packet.position.x.toInt(), packet.position.y.toInt() - 1, packet.position.z.toInt())
+                    val blockPos = Vector3i.from(packet.x.toInt(), packet.y.toInt(), packet.z.toInt())
                     teleportToBlock(localPlayer, blockPos)
                 }
             }
