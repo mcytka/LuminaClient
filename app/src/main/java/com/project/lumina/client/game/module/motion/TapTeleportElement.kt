@@ -26,7 +26,8 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
         if (packet is PlayerAuthInputPacket) {
             // Parse playerActions to find block interaction
             val blockAction = packet.playerActions.firstOrNull { action ->
-                action.actionType == PlayerActionType.BLOCK_INTERACT
+                action.action == PlayerActionType.BLOCK_INTERACT || 
+                action.action == PlayerActionType.START_BREAK
             }
 
             blockAction?.let { action ->
