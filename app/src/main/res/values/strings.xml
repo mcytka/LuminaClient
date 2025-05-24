@@ -155,7 +155,7 @@
     <string name="module_auto_walk_display_name">AutoWalk</string>
     <string name="module_bhop_display_name">Bhop</string>
     <string name="module_fly_display_name">Fly</string>
-    <string name="module_tapteleport_display_name">TapTP</string>
+    <string name="module_tap_teleport_display_name">TapTP</string>
     <string name="module_high_jump_display_name">HighJump</string>
     <string name="module_jet_pack_display_name">JetPack</string>
     <string name="module_motion_fly_display_name">MotionFly</string>
