@@ -130,7 +130,7 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                 } ?: Vector3f.ZERO
 
                 val yaw = packet.rotation?.y?.toDouble()?.let { toRadians(it) } ?: 0.0
-                val horizontalMotion = if (inputMotion != Vector3f.ZERO && isFlying) {
+                val horizontalMotion = if (inputMotion != Vector3f.ZERO) {
                     val speed = flySpeed.toDouble()
                     Vector3f.from(
                         ((-sin(yaw) * inputMotion.z.toDouble() + cos(yaw) * inputMotion.x.toDouble()) * speed).toFloat(),
@@ -147,13 +147,13 @@ class FlyElement(iconResId: Int = R.drawable.ic_feather_black_24dp) : Element(
                     horizontalMotion.z
                 )
 
-                if (isFlying && combinedMotion != Vector3f.ZERO) {
+                if ((isFlying || verticalMotion != 0f) && combinedMotion != Vector3f.ZERO) {
                     val motionPacket = SetEntityMotionPacket().apply {
                         runtimeEntityId = session.localPlayer.runtimeEntityId
                         motion = combinedMotion
                     }
                     session.clientBound(motionPacket)
-                } else if (isFlying) {
+                } else if (isFlying || verticalMotion != 0f) {
                     val stopMotionPacket = SetEntityMotionPacket().apply {
                         runtimeEntityId = session.localPlayer.runtimeEntityId
                         motion = Vector3f.ZERO
