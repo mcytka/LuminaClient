@@ -86,6 +86,12 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
         val packet = interceptablePacket.packet
 
         if (packet is PlayerAuthInputPacket) {
+            // Check for inputData flags indicating interaction
+            if (!packet.inputData.contains(org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData.PERFORM_BLOCK_ACTIONS) &&
+                !packet.inputData.contains(org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData.PERFORM_ITEM_INTERACTION)) {
+                return
+            }
+
             val blockAction = packet.playerActions.firstOrNull { action ->
                 action.action == PlayerActionType.BLOCK_INTERACT ||
                 action.action == PlayerActionType.START_BREAK
