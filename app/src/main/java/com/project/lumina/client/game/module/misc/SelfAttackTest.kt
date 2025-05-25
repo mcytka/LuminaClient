@@ -9,24 +9,24 @@ import org.cloudburstmc.protocol.bedrock.packet.PlayerActionPacket
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
 
-class ClickDebugger(iconResId: Int = R.drawable.ic_bug_black_24dp) : Element(
-    name = "ClickDebugger",
+class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : Element(
+    name = "SelfAttackTest",
     category = CheatCategory.Misc,
     iconResId,
     displayNameResId = R.string.module_selfattacktest_display_name
 ) {
 
-    private val debugInterval by intValue("Debug Interval", 1000, 500..2000)
-    private var lastDebugTime: Long = 0
+    private val activationInterval by intValue("Activation Interval", 1000, 500..2000)
+    private var lastActivationTime: Long = 0
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
         if (!isEnabled) return
 
         val currentTime = System.currentTimeMillis()
-        if (currentTime - lastDebugTime < debugInterval) return // Ограничение частоты логов
+        if (currentTime - lastActivationTime < activationInterval) return
 
         val packet = interceptablePacket.packet
-        val logMessage = StringBuilder("§l§b[ClickDebugger] §r§aPacket (client -> server) logged:\n")
+        val logMessage = StringBuilder("§l§b[SelfAttackTest-Logger] §r§aPacket (client -> server) logged:\n")
 
         when (packet) {
             is PlayerAuthInputPacket -> {
@@ -50,22 +50,24 @@ class ClickDebugger(iconResId: Int = R.drawable.ic_bug_black_24dp) : Element(
                     logMessage.append("  Block Position: ${packet.blockPosition}\n")
                     packet.actions.forEach { action ->
                         logMessage.append("  Action: $action\n")
-                        logMessage.append("    Block Interaction Type: ${action.blockInteractionType}\n")
                     }
                 }
                 logMessage.append("  Timestamp: $currentTime")
             }
+            else -> {
+                logMessage.append("  Packet Type: ${packet.javaClass.simpleName}\n")
+                logMessage.append("  Packet Details: $packet\n")
+                logMessage.append("  Timestamp: $currentTime")
+            }
         }
 
-        if (logMessage.length > "§l§b[ClickDebugger] §r§aPacket (client -> server) logged:\n".length) {
-            session.displayClientMessage(logMessage.toString())
-            lastDebugTime = currentTime
-        }
+        session.displayClientMessage(logMessage.toString())
+        lastActivationTime = currentTime
     }
 
     override fun onDisabled() {
         super.onDisabled()
-        lastDebugTime = 0
-        session.displayClientMessage("§l§b[ClickDebugger] §r§aClickDebugger disabled")
+        lastActivationTime = 0
+        session.displayClientMessage("§l§b[SelfAttackTest] §r§aSelfAttackTest disabled")
     }
 }
