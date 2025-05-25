@@ -7,7 +7,6 @@ import com.project.lumina.client.game.InterceptablePacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerActionPacket
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
 
 class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : Element(
     name = "SelfAttackTest",
@@ -46,11 +45,9 @@ class SelfAttackTest(iconResId: Int = R.drawable.ic_sword_cross_black_24dp) : El
             is InventoryTransactionPacket -> {
                 logMessage.append("  Packet Type: InventoryTransactionPacket\n")
                 logMessage.append("  Transaction Type: ${packet.transactionType}\n")
-                if (packet.transactionType == InventoryTransactionType.ITEM_USE_ON) {
-                    logMessage.append("  Block Position: ${packet.blockPosition}\n")
-                    packet.actions.forEach { action ->
-                        logMessage.append("  Action: $action\n")
-                    }
+                logMessage.append("  Block Position: ${packet.blockPosition}\n")
+                packet.actions.forEach { action ->
+                    logMessage.append("  Action: $action\n")
                 }
                 logMessage.append("  Timestamp: $currentTime")
             }
