@@ -180,4 +180,3 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
         session.clientBound(movePlayerPacket)
     }
 }
-</create_file>
