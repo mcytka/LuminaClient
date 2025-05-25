@@ -102,8 +102,8 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
 
                 // Adjust position based on face
                 when (face) {
-                    0 -> y -= 1f // bottom face, move down
-                    1 -> y += 1f // top face, move up
+                    0 -> y += 1f // bottom face, move up (teleport on top of block)
+                    1 -> y += 1f // top face, move down (teleport below block)
                     2 -> z -= 1f // north face
                     3 -> z += 1f // south face
                     4 -> x -= 1f // west face
@@ -120,9 +120,10 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
 
                 val targetPos = Vector3f.from(x, y + 2f, z) // add 2 to y for player height offset
 
-                enableNoClip()
+                // Temporarily disable noclip for testing
+                // enableNoClip()
                 teleportTo(targetPos)
-                scheduleDisableNoClip()
+                // scheduleDisableNoClip()
             }
         }
     }
