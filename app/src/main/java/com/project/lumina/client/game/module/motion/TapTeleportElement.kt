@@ -111,7 +111,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
                 // Adjust position based on face
                 when (face) {
                     0 -> y += 1f // bottom face, move up (teleport on top of block)
-                    1 -> y += 1f // top face, move down (teleport below block)
+                    1 -> y -= 1f // top face, move down (teleport below block)
                     2 -> z -= 1f // north face
                     3 -> z += 1f // south face
                     4 -> x -= 1f // west face
@@ -133,6 +133,44 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
                 teleportTo(targetPos)
                 // scheduleDisableNoClip()
             }
+        } else if (packet is org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket) {
+            // Handle adventure mode tap teleportation from InventoryTransactionPacket only if transactionType is ITEM_USE
+            if (packet.transactionType != org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType.ITEM_USE) {
+                return
+            }
+
+            val pos = packet.blockPosition
+            val face = packet.blockFace
+
+            // Calculate base position centered on block
+            var x = pos.x.toFloat() + 0.5f
+            var y = pos.y.toFloat()
+            var z = pos.z.toFloat() + 0.5f
+
+            // Adjust position based on face
+            when (face) {
+                0 -> y += 1f // bottom face, move up (teleport on top of block)
+                1 -> y -= 1f // top face, move down (teleport below block)
+                2 -> z -= 1f // north face
+                3 -> z += 1f // south face
+                4 -> x -= 1f // west face
+                5 -> x += 1f // east face
+            }
+
+            // Check if block above target position is air (empty)
+            val blockAboveIsAir = isBlockAir(pos.x, pos.y + 1, pos.z)
+
+            // If block above is not air, adjust y to avoid getting stuck
+            if (!blockAboveIsAir) {
+                y += 1f
+            }
+
+            val targetPos = Vector3f.from(x, y + 2f, z) // add 2 to y for player height offset
+
+            // Temporarily disable noclip for testing
+            // enableNoClip()
+            teleportTo(targetPos)
+            // scheduleDisableNoClip()
         }
     }
 
@@ -180,3 +218,4 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
         session.clientBound(movePlayerPacket)
     }
 }
+</create_file>
