@@ -15,6 +15,7 @@ import org.cloudburstmc.protocol.bedrock.data.AbilityLayer
 import org.cloudburstmc.protocol.bedrock.data.PlayerPermission
 import org.cloudburstmc.protocol.bedrock.data.command.CommandPermission
 import org.cloudburstmc.protocol.bedrock.data.PlayerActionType
+import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import org.cloudburstmc.protocol.bedrock.packet.UpdateAbilitiesPacket
@@ -87,8 +88,31 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
 
         if (packet is PlayerAuthInputPacket) {
             // Check for inputData flags indicating interaction
-            if (!packet.inputData.contains(org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData.PERFORM_BLOCK_ACTIONS) &&
-                !packet.inputData.contains(org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData.PERFORM_ITEM_INTERACTION)) {
+            if (!packet.inputData.contains(PlayerAuthInputData.PERFORM_BLOCK_ACTIONS) &&
+                !packet.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_INTERACTION) &&
+                !packet.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_STACK_REQUEST)) {
+                return
+            }
+
+            if (packet.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_INTERACTION) && packet.itemUseTransaction != null) {
+                // Use itemUseTransaction position for teleport
+                val pos = packet.itemUseTransaction.blockPosition
+                val x = pos.x.toFloat() + 0.5f
+                val y = pos.y.toFloat() + 2f
+                val z = pos.z.toFloat() + 0.5f
+                val targetPos = Vector3f.from(x, y, z)
+                teleportTo(targetPos)
+                return
+            }
+
+            if (packet.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_STACK_REQUEST) && packet.itemStackRequest != null) {
+                // Use itemStackRequest position for teleport if available
+                val pos = packet.itemStackRequest.blockPosition
+                val x = pos.x.toFloat() + 0.5f
+                val y = pos.y.toFloat() + 2f
+                val z = pos.z.toFloat() + 0.5f
+                val targetPos = Vector3f.from(x, y, z)
+                teleportTo(targetPos)
                 return
             }
 
@@ -109,7 +133,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
                 // Adjust position based on face
                 when (face) {
                     0 -> y += 1f // bottom face, move up (teleport on top of block)
-                    1 -> y += 1f // top face, move down (teleport below block)
+                    1 -> y -= 1f // top face, move down (teleport below block)
                     2 -> z -= 1f // north face
                     3 -> z += 1f // south face
                     4 -> x -= 1f // west face
