@@ -14,11 +14,9 @@ import org.cloudburstmc.protocol.bedrock.data.Ability
 import org.cloudburstmc.protocol.bedrock.data.AbilityLayer
 import org.cloudburstmc.protocol.bedrock.data.PlayerPermission
 import org.cloudburstmc.protocol.bedrock.data.command.CommandPermission
-import org.cloudburstmc.protocol.bedrock.data.PlayerActionType
-import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import org.cloudburstmc.math.vector.Vector3i
+import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
-import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import org.cloudburstmc.protocol.bedrock.packet.UpdateAbilitiesPacket
 
 class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
@@ -87,54 +85,8 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
 
         val packet = interceptablePacket.packet
 
-        if (packet is PlayerAuthInputPacket) {
-            // Check for inputData flags indicating interaction
-            if (!packet.inputData.contains(PlayerAuthInputData.PERFORM_BLOCK_ACTIONS) &&
-                !packet.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)) {
-                return
-            }
-
-            val blockAction = packet.playerActions.firstOrNull { action ->
-                action.action == PlayerActionType.BLOCK_INTERACT ||
-                action.action == PlayerActionType.START_BREAK
-            }
-
-            blockAction?.let { action ->
-                val pos = action.blockPosition
-                val face = action.face
-
-                // Calculate base position centered on block
-                var x = pos.x.toFloat() + 0.5f
-                var y = pos.y.toFloat()
-                var z = pos.z.toFloat() + 0.5f
-
-                // Adjust position based on face
-                when (face) {
-                    0 -> y += 1f // bottom face, move up (teleport on top of block)
-                    1 -> y += 1f // top face, move down (teleport below block)
-                    2 -> z -= 1f // north face
-                    3 -> z += 1f // south face
-                    4 -> x -= 1f // west face
-                    5 -> x += 1f // east face
-                }
-
-                // Check if block above target position is air (empty)
-                val blockAboveIsAir = isBlockAir(pos.x, pos.y + 1, pos.z)
-
-                // If block above is not air, adjust y to avoid getting stuck
-                if (!blockAboveIsAir) {
-                    y += 1f
-                }
-
-                val targetPos = Vector3f.from(x, y + 2f, z) // add 2 to y for player height offset
-
-                // Temporarily disable noclip for testing
-                // enableNoClip()
-                teleportTo(targetPos)
-                // scheduleDisableNoClip()
-            }
-        } else if (packet is org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket) {
-            // Handle adventure mode tap teleportation from InventoryTransactionPacket only if transactionType is ITEM_USE
+        if (packet is InventoryTransactionPacket) {
+            // Handle tap teleportation only for ITEM_USE transaction type
             if (packet.transactionType != org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType.ITEM_USE) {
                 return
             }
@@ -150,7 +102,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
             // Adjust position based on face
             when (face) {
                 0 -> y += 1f // bottom face, move up (teleport on top of block)
-                1 -> y -= 1f // top face, move down (teleport below block)
+                1 -> y += 1f // top face, move down (teleport below block)
                 2 -> z -= 1f // north face
                 3 -> z += 1f // south face
                 4 -> x -= 1f // west face
