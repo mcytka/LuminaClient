@@ -17,6 +17,7 @@ import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.UpdateAbilitiesPacket
+import org.cloudburstmc.protocol.bedrock.packet.EntityFallPacket
 import kotlin.random.Random
 
 class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
@@ -147,10 +148,10 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
     }
 
     private fun sendFallDamageReset() {
-        val fallPacket = org.cloudburstmc.protocol.bedrock.packet.SetEntityFallPacket().apply {
+        val fallPacket = EntityFallPacket().apply {
             runtimeEntityId = session.localPlayer.runtimeEntityId
             fallDistance = 0f
-            onGround = true
+            inVoid = false
         }
         session.clientBound(fallPacket)
     }
