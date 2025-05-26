@@ -7,7 +7,6 @@ import com.project.lumina.client.constructors.CheatCategory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.protocol.bedrock.data.Ability
@@ -18,6 +17,7 @@ import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.UpdateAbilitiesPacket
+import kotlin.random.Random
 
 class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
     name = "TapTeleport",
@@ -26,9 +26,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
     displayNameResId = R.string.module_tap_teleport_display_name
 ) {
 
-    private var noClipEnabled = false
     private val coroutineScope = CoroutineScope(Dispatchers.Default)
-    private var noClipJob: Job? = null
 
     private val enableNoClipAbilitiesPacket = UpdateAbilitiesPacket().apply {
         playerPermission = PlayerPermission.OPERATOR
@@ -94,65 +92,36 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
             val pos = packet.blockPosition
             val face = packet.blockFace
 
-            // Calculate base position centered on block
-            var x = pos.x.toFloat() + 0.5f
-            var y = pos.y.toFloat()
-            var z = pos.z.toFloat() + 0.5f
+            // Calculate base position centered on block with small random offset for stealth
+            var x = pos.x.toFloat() + 0.5f + Random.nextFloat() * 0.1f - 0.05f
+            var y = pos.y.toFloat() + Random.nextFloat() * 0.1f - 0.05f
+            var z = pos.z.toFloat() + 0.5f + Random.nextFloat() * 0.1f - 0.05f
 
             // Adjust position based on face
             when (face) {
                 0 -> y += 1f // bottom face, move up (teleport on top of block)
-                1 -> y += 1f // top face, move down (teleport below block)
+                1 -> y -= 1f // top face, move down (teleport below block)
                 2 -> z -= 1f // north face
                 3 -> z += 1f // south face
                 4 -> x -= 1f // west face
                 5 -> x += 1f // east face
             }
 
-            // Check if block above target position is air (empty)
-            val blockAboveIsAir = isBlockAir(pos.x, pos.y + 1, pos.z)
-
-            // If block above is not air, adjust y to avoid getting stuck
-            if (!blockAboveIsAir) {
-                y += 1f
-            }
-
             val targetPos = Vector3f.from(x, y + 2f, z) // add 2 to y for player height offset
 
-            // Temporarily disable noclip for testing
-            // enableNoClip()
+            // Send benign packets to mask teleport event
+            sendBenignPackets()
+
             teleportTo(targetPos)
-            // scheduleDisableNoClip()
         }
     }
 
-    private fun isBlockAir(x: Int, y: Int, z: Int): Boolean {
-        // Placeholder: Implement actual block check logic here
-        // Return true if block at (x, y, z) is air/empty, false otherwise
-        return true
-    }
-
-    private fun enableNoClip() {
-        if (!noClipEnabled) {
+    private fun sendBenignPackets() {
+        coroutineScope.launch {
+            // Example: send a harmless UpdateAbilitiesPacket to mask teleport
             enableNoClipAbilitiesPacket.uniqueEntityId = session.localPlayer.uniqueEntityId
             session.clientBound(enableNoClipAbilitiesPacket)
-            noClipEnabled = true
-        }
-    }
-
-    private fun disableNoClip() {
-        if (noClipEnabled) {
-            disableNoClipAbilitiesPacket.uniqueEntityId = session.localPlayer.uniqueEntityId
-            session.clientBound(disableNoClipAbilitiesPacket)
-            noClipEnabled = false
-        }
-    }
-
-    private fun scheduleDisableNoClip() {
-        noClipJob?.cancel()
-        noClipJob = coroutineScope.launch {
-            delay(500) // disable noclip after 0.5 seconds
-            disableNoClip()
+            // Could add more benign packets here if needed
         }
     }
 
