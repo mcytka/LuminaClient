@@ -110,7 +110,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
             val targetPos = Vector3f.from(x, y + 2f, z) // add 2 to y for player height offset
 
             // Send benign packets to mask teleport event
-            sendBenignPackets()
+            // sendBenignPackets() // Disabled to avoid enabling noclip
 
             teleportTo(targetPos)
         }
@@ -119,8 +119,9 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
     private fun sendBenignPackets() {
         coroutineScope.launch {
             // Example: send a harmless UpdateAbilitiesPacket to mask teleport
-            enableNoClipAbilitiesPacket.uniqueEntityId = session.localPlayer.uniqueEntityId
-            session.clientBound(enableNoClipAbilitiesPacket)
+            // Disabled to avoid enabling noclip
+            // enableNoClipAbilitiesPacket.uniqueEntityId = session.localPlayer.uniqueEntityId
+            // session.clientBound(enableNoClipAbilitiesPacket)
             // Could add more benign packets here if needed
         }
     }
