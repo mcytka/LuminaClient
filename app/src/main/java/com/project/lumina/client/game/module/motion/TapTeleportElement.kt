@@ -144,7 +144,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
     private fun sendMovePacket(position: Vector3f) {
         val movePlayerPacket = MovePlayerPacket().apply {
             runtimeEntityId = session.localPlayer.runtimeEntityId
-            this.position = position
+            this.position = position // Используем параметр position, переданный в функцию
             this.rotation = session.localPlayer.vec3Rotation
             mode = MovePlayerPacket.Mode.NORMAL
             onGround = true
