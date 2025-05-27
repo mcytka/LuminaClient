@@ -6,12 +6,14 @@ import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.constructors.CheatCategory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.protocol.bedrock.data.Ability
 import org.cloudburstmc.protocol.bedrock.data.AbilityLayer
 import org.cloudburstmc.protocol.bedrock.data.PlayerPermission
 import org.cloudburstmc.protocol.bedrock.data.command.CommandPermission
+import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.UpdateAbilitiesPacket
@@ -112,9 +114,6 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
             // sendBenignPackets() // Disabled to avoid enabling noclip
 
             coroutineScope.launch {
-                // Simulate intermediate movement packets before teleport
-                simulateIntermediateMovement(targetPos)
-
                 // Teleport player
                 teleportTo(targetPos)
 
@@ -122,36 +121,6 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
                 sendFallDamageReset()
             }
         }
-    }
-
-    private suspend fun simulateIntermediateMovement(targetPos: Vector3f) {
-        val currentPos = session.localPlayer.position
-        val distance = currentPos.distance(targetPos)
-        val steps = kotlin.math.ceil(distance / 1.0).toInt().coerceAtLeast(1) // 1 block per step
-
-        for (i in 1 until steps) {
-            val t = i.toFloat() / steps
-            val intermediatePos = Vector3f.from(
-                currentPos.x + (targetPos.x - currentPos.x) * t,
-                currentPos.y + (targetPos.y - currentPos.y) * t,
-                currentPos.z + (targetPos.z - currentPos.z) * t
-            )
-            sendMovePacket(intermediatePos)
-            kotlinx.coroutines.delay(10) // minimal delay to simulate movement but keep speed
-        }
-    }
-
-    private fun sendMovePacket(position: Vector3f) {
-        val movePlayerPacket = MovePlayerPacket().apply {
-            runtimeEntityId = session.localPlayer.runtimeEntityId
-            this.position = position // Используем параметр position, переданный в функцию
-            this.rotation = session.localPlayer.vec3Rotation
-            mode = MovePlayerPacket.Mode.NORMAL
-            onGround = true
-            ridingRuntimeEntityId = 0
-            tick = session.localPlayer.tickExists
-        }
-        session.clientBound(movePlayerPacket)
     }
 
     private fun sendBenignPackets() {
@@ -174,6 +143,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
             ridingRuntimeEntityId = 0
             tick = session.localPlayer.tickExists
         }
+
         session.clientBound(movePlayerPacket)
     }
 
