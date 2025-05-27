@@ -127,7 +127,8 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
 
     private suspend fun simulateIntermediateMovement(targetPos: Vector3f) {
         val currentPos = session.localPlayer.position
-        val steps = 8 // fixed number of steps for smoothness
+        val distance = currentPos.distance(targetPos)
+        val steps = kotlin.math.ceil(distance / 1.0).toInt().coerceAtLeast(1) // 1 block per step
 
         for (i in 1 until steps) {
             val t = i.toFloat() / steps
@@ -137,7 +138,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
                 currentPos.z + (targetPos.z - currentPos.z) * t
             )
             sendMovePacket(intermediatePos)
-            kotlinx.coroutines.delay(15) // minimal delay to simulate movement but keep speed
+            kotlinx.coroutines.delay(10) // minimal delay to simulate movement but keep speed
         }
     }
 
