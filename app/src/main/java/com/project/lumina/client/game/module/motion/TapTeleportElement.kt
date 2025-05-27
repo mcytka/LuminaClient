@@ -6,14 +6,12 @@ import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.constructors.CheatCategory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.protocol.bedrock.data.Ability
 import org.cloudburstmc.protocol.bedrock.data.AbilityLayer
 import org.cloudburstmc.protocol.bedrock.data.PlayerPermission
 import org.cloudburstmc.protocol.bedrock.data.command.CommandPermission
-import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.MovePlayerPacket
 import org.cloudburstmc.protocol.bedrock.packet.UpdateAbilitiesPacket
@@ -123,6 +121,7 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
                 // Send fall damage reset packet to avoid fall damage
                 sendFallDamageReset()
             }
+        }
     }
 
     private suspend fun simulateIntermediateMovement(targetPos: Vector3f) {
@@ -154,8 +153,6 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
         }
         session.clientBound(movePlayerPacket)
     }
-        }
-    }
 
     private fun sendBenignPackets() {
         coroutineScope.launch {
@@ -177,7 +174,6 @@ class TapTeleportElement(iconResId: Int = R.drawable.teleport) : Element(
             ridingRuntimeEntityId = 0
             tick = session.localPlayer.tickExists
         }
-
         session.clientBound(movePlayerPacket)
     }
 
