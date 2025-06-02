@@ -97,6 +97,9 @@ class ESPElement : Element(
                 val rendererField = it::class.java.getDeclaredField("renderer")
                 rendererField.isAccessible = true
                 val rendererInstance = rendererField.get(it)
+                val useDynamicViewMatrixField = rendererInstance::class.java.getDeclaredField("useDynamicViewMatrix")
+                useDynamicViewMatrixField.isAccessible = true
+                useDynamicViewMatrixField.setBoolean(rendererInstance, true)
                 val playerRotationField = rendererInstance::class.java.getDeclaredField("playerRotation")
                 playerRotationField.isAccessible = true
                 playerRotationField.set(rendererInstance, rotation)
