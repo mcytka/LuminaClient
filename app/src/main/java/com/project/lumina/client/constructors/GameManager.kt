@@ -126,6 +126,7 @@ object GameManager {
             add(FullBrightElement())
             add(OpFightBotElement())
             add(FollowBotElement())
+            add(ESPElement())
             add(VelocityElement())
             add(AntiKickElement())
             add(QuickAttackElement())
