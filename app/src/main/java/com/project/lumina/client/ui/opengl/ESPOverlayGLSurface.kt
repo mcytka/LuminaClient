@@ -34,6 +34,8 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
 
     private class ESPRenderer : Renderer {
         private var playerPos = Vector3f.from(0f, 0f, 0f)
+        private var playerRotation = Vector3f.from(0f, 0f, 0f)
+        private var cameraOrientation = Vector3f.from(0f, 0f, 0f)
         private var entityList = emptyList<Vector3f>()
 
         private val viewMatrix = FloatArray(16)
@@ -56,11 +58,22 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
         override fun onDrawFrame(gl: GL10?) {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
+            val eyeX = playerPos.x
+            val eyeY = playerPos.y + 1.5f
+            val eyeZ = playerPos.z
+
+            val pitch = Math.toRadians(playerRotation.x.toDouble()).toFloat()
+            val yaw = Math.toRadians(playerRotation.y.toDouble()).toFloat()
+
+            val lookX = eyeX + (-Math.sin(yaw.toDouble()) * Math.cos(pitch.toDouble())).toFloat()
+            val lookY = eyeY + Math.sin(pitch.toDouble()).toFloat()
+            val lookZ = eyeZ + (-Math.cos(yaw.toDouble()) * Math.cos(pitch.toDouble())).toFloat()
+
             Matrix.setLookAtM(
                 viewMatrix, 0,
-                0f, 1.5f, 0f,  
-                0f, 1.5f, -5f, 
-                0f, 1f, 0f     
+                eyeX, eyeY, eyeZ,
+                lookX, lookY, lookZ,
+                0f, 1f, 0f
             )
 
             OpenGLESPRenderer.renderESPBoxes(playerPos, viewMatrix, projectionMatrix, entityList)
@@ -72,6 +85,14 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
 
         fun updatePlayerPosition(pos: Vector3f) {
             this.playerPos = pos
+        }
+
+        fun updatePlayerRotation(rotation: Vector3f) {
+            this.playerRotation = rotation
+        }
+
+        fun updateCameraOrientation(orientation: Vector3f) {
+            this.cameraOrientation = orientation
         }
     }
 }
