@@ -93,8 +93,10 @@ class ESPElement : Element(
 
         glSurface?.let {
             it.updatePlayerPosition(position)
-            it.updatePlayerRotation(rotation)
-            it.updateCameraOrientation(cameraOrientation)
+            if (it is com.project.lumina.client.ui.opengl.ESPOverlayGLSurface) {
+                it.renderer.updatePlayerRotation(rotation)
+                it.renderer.updateCameraOrientation(cameraOrientation)
+            }
             it.updateEntities(searchForClosestEntities().map { entity -> entity.vec3Position })
         }
     }
