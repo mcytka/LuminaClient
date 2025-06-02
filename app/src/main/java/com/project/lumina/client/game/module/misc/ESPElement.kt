@@ -94,8 +94,15 @@ class ESPElement : Element(
         glSurface?.let {
             it.updatePlayerPosition(position)
             if (it is com.project.lumina.client.ui.opengl.ESPOverlayGLSurface) {
-                it.renderer.playerRotation = rotation
-                it.renderer.cameraOrientation = cameraOrientation
+                val rendererField = it::class.java.getDeclaredField("renderer")
+                rendererField.isAccessible = true
+                val rendererInstance = rendererField.get(it)
+                val playerRotationField = rendererInstance::class.java.getDeclaredField("playerRotation")
+                playerRotationField.isAccessible = true
+                playerRotationField.set(rendererInstance, rotation)
+                val cameraOrientationField = rendererInstance::class.java.getDeclaredField("cameraOrientation")
+                cameraOrientationField.isAccessible = true
+                cameraOrientationField.set(rendererInstance, cameraOrientation)
             }
             it.updateEntities(searchForClosestEntities().map { entity -> entity.vec3Position })
         }
