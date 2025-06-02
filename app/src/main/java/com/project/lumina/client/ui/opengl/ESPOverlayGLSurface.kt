@@ -32,7 +32,7 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
         renderer.updatePlayerPosition(player)
     }
 
-    class ESPRenderer : Renderer {
+    class ESPRenderer internal constructor() : Renderer {
         var playerPos = Vector3f.from(0f, 0f, 0f)
         var playerRotation = Vector3f.from(0f, 0f, 0f)
         var cameraOrientation = Vector3f.from(0f, 0f, 0f)
