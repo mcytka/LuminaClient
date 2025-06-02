@@ -32,14 +32,14 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
         renderer.updatePlayerPosition(player)
     }
 
-    private class ESPRenderer : Renderer {
-        private var playerPos = Vector3f.from(0f, 0f, 0f)
-        private var playerRotation = Vector3f.from(0f, 0f, 0f)
-        private var cameraOrientation = Vector3f.from(0f, 0f, 0f)
-        private var entityList = emptyList<Vector3f>()
+    class ESPRenderer : Renderer {
+        var playerPos = Vector3f.from(0f, 0f, 0f)
+        var playerRotation = Vector3f.from(0f, 0f, 0f)
+        var cameraOrientation = Vector3f.from(0f, 0f, 0f)
+        var entityList = emptyList<Vector3f>()
 
-        private val viewMatrix = FloatArray(16)
-        private val projectionMatrix = FloatArray(16)
+        val viewMatrix = FloatArray(16)
+        val projectionMatrix = FloatArray(16)
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
             GLES20.glClearColor(0f, 0f, 0f, 0f) 
