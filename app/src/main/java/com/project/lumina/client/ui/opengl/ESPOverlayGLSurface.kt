@@ -69,12 +69,22 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
             val lookY = eyeY + Math.sin(pitch.toDouble()).toFloat()
             val lookZ = eyeZ + (-Math.cos(yaw.toDouble()) * Math.cos(pitch.toDouble())).toFloat()
 
-            Matrix.setLookAtM(
-                viewMatrix, 0,
-                eyeX, eyeY, eyeZ,
-                lookX, lookY, lookZ,
-                0f, 1f, 0f
-            )
+            try {
+                Matrix.setLookAtM(
+                    viewMatrix, 0,
+                    eyeX, eyeY, eyeZ,
+                    lookX, lookY, lookZ,
+                    0f, 1f, 0f
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("ESPOverlayGLSurface", "Error setting view matrix: ${e.message}")
+                Matrix.setLookAtM(
+                    viewMatrix, 0,
+                    0f, 1.5f, 0f,
+                    0f, 1.5f, -5f,
+                    0f, 1f, 0f
+                )
+            }
 
             OpenGLESPRenderer.renderESPBoxes(playerPos, viewMatrix, projectionMatrix, entityList)
         }
