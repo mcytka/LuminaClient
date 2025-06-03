@@ -7,6 +7,8 @@ import android.opengl.Matrix
 import org.cloudburstmc.math.vector.Vector3f
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
+import kotlin.math.cos
+import kotlin.math.sin
 
 class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
 
@@ -28,18 +30,18 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
         renderer.updateEntities(entities)
     }
 
-    fun updatePlayerState(position: Vector3f, rotation: Vector3f, cameraOrientation: Vector3f) {
-        renderer.updatePlayerState(position, rotation, cameraOrientation)
+    fun updatePlayerPosition(player: Vector3f, rotationYaw: Float, rotationPitch: Float) {
+        renderer.updatePlayerPosition(player, rotationYaw, rotationPitch)
     }
 
-    class ESPRenderer internal constructor() : Renderer {
-        var playerPos = Vector3f.from(0f, 0f, 0f)
-        var playerRotation = Vector3f.from(0f, 0f, 0f)
-        var cameraOrientation = Vector3f.from(0f, 0f, 0f)
-        var entityList = emptyList<Vector3f>()
+    private class ESPRenderer : Renderer {
+        private var playerPos = Vector3f.from(0f, 0f, 0f)
+        private var rotationYaw = 0f
+        private var rotationPitch = 0f
+        private var entityList = emptyList<Vector3f>()
 
-        val viewMatrix = FloatArray(16)
-        val projectionMatrix = FloatArray(16)
+        private val viewMatrix = FloatArray(16)
+        private val projectionMatrix = FloatArray(16)
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
             GLES20.glClearColor(0f, 0f, 0f, 0f) 
@@ -58,33 +60,28 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
         override fun onDrawFrame(gl: GL10?) {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
+            // Calculate the lookAt vector based on player's rotationYaw and rotationPitch
+            val pitchRad = Math.toRadians(rotationPitch.toDouble()).toFloat()
+            val yawRad = Math.toRadians(rotationYaw.toDouble()).toFloat()
+
+            val lookX = cos(pitchRad) * sin(yawRad)
+            val lookY = sin(pitchRad)
+            val lookZ = cos(pitchRad) * cos(yawRad)
+
             val eyeX = playerPos.x
-            val eyeY = playerPos.y + 1.5f
+            val eyeY = playerPos.y + 1.5f // eye height offset
             val eyeZ = playerPos.z
 
-            val pitch = Math.toRadians(playerRotation.x.toDouble()).toFloat()
-            val yaw = Math.toRadians(playerRotation.y.toDouble()).toFloat()
+            val centerX = eyeX + lookX
+            val centerY = eyeY + lookY
+            val centerZ = eyeZ + lookZ
 
-            val lookX = eyeX + (-Math.sin(yaw.toDouble()) * Math.cos(pitch.toDouble())).toFloat()
-            val lookY = eyeY + Math.sin(pitch.toDouble()).toFloat()
-            val lookZ = eyeZ + (-Math.cos(yaw.toDouble()) * Math.cos(pitch.toDouble())).toFloat()
-
-            try {
-                Matrix.setLookAtM(
-                    viewMatrix, 0,
-                    eyeX, eyeY, eyeZ,
-                    lookX, lookY, lookZ,
-                    0f, 1f, 0f
-                )
-            } catch (e: Exception) {
-                android.util.Log.e("ESPOverlayGLSurface", "Error setting view matrix: ${e.message}")
-                Matrix.setLookAtM(
-                    viewMatrix, 0,
-                    0f, 1.5f, 0f,
-                    0f, 1.5f, -5f,
-                    0f, 1f, 0f
-                )
-            }
+            Matrix.setLookAtM(
+                viewMatrix, 0,
+                eyeX, eyeY, eyeZ,
+                centerX, centerY, centerZ,
+                0f, 1f, 0f
+            )
 
             OpenGLESPRenderer.renderESPBoxes(playerPos, viewMatrix, projectionMatrix, entityList)
         }
@@ -93,10 +90,10 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
             this.entityList = entities
         }
 
-        fun updatePlayerState(position: Vector3f, rotation: Vector3f, cameraOrientation: Vector3f) {
-            this.playerPos = position
-            this.playerRotation = rotation
-            this.cameraOrientation = cameraOrientation
+        fun updatePlayerPosition(pos: Vector3f, yaw: Float, pitch: Float) {
+            this.playerPos = pos
+            this.rotationYaw = yaw
+            this.rotationPitch = pitch
         }
     }
 }
