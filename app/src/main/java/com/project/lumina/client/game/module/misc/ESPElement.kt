@@ -92,21 +92,7 @@ class ESPElement : Element(
         val cameraOrientation = packet.cameraOrientation
 
         glSurface?.let {
-            it.updatePlayerPosition(position)
-            if (it is com.project.lumina.client.ui.opengl.ESPOverlayGLSurface) {
-                val rendererField = it::class.java.getDeclaredField("renderer")
-                rendererField.isAccessible = true
-                val rendererInstance = rendererField.get(it)
-                val useDynamicViewMatrixField = rendererInstance::class.java.getDeclaredField("useDynamicViewMatrix")
-                useDynamicViewMatrixField.isAccessible = true
-                useDynamicViewMatrixField.setBoolean(rendererInstance, true)
-                val playerRotationField = rendererInstance::class.java.getDeclaredField("playerRotation")
-                playerRotationField.isAccessible = true
-                playerRotationField.set(rendererInstance, rotation)
-                val cameraOrientationField = rendererInstance::class.java.getDeclaredField("cameraOrientation")
-                cameraOrientationField.isAccessible = true
-                cameraOrientationField.set(rendererInstance, cameraOrientation)
-            }
+            it.updatePlayerState(position, rotation, cameraOrientation)
             it.updateEntities(searchForClosestEntities().map { entity -> entity.vec3Position })
         }
     }
