@@ -28,8 +28,8 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
         renderer.updateEntities(entities)
     }
 
-    fun updatePlayerPosition(player: Vector3f) {
-        renderer.updatePlayerPosition(player)
+    fun updatePlayerState(position: Vector3f, rotation: Vector3f, cameraOrientation: Vector3f) {
+        renderer.updatePlayerState(position, rotation, cameraOrientation)
     }
 
     class ESPRenderer internal constructor() : Renderer {
@@ -40,8 +40,6 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
 
         val viewMatrix = FloatArray(16)
         val projectionMatrix = FloatArray(16)
-
-        var useDynamicViewMatrix = false
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
             GLES20.glClearColor(0f, 0f, 0f, 0f) 
@@ -60,37 +58,26 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
         override fun onDrawFrame(gl: GL10?) {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
-            android.util.Log.d("ESPOverlayGLSurface", "PlayerPos: $playerPos, PlayerRotation: $playerRotation, Entities: ${entityList.size}")
+            val eyeX = playerPos.x
+            val eyeY = playerPos.y + 1.5f
+            val eyeZ = playerPos.z
 
-            if (useDynamicViewMatrix) {
-                val eyeX = playerPos.x
-                val eyeY = playerPos.y + 1.5f
-                val eyeZ = playerPos.z
+            val pitch = Math.toRadians(playerRotation.x.toDouble()).toFloat()
+            val yaw = Math.toRadians(playerRotation.y.toDouble()).toFloat()
 
-                val pitch = Math.toRadians(playerRotation.x.toDouble()).toFloat()
-                val yaw = Math.toRadians(playerRotation.y.toDouble()).toFloat()
+            val lookX = eyeX + (-Math.sin(yaw.toDouble()) * Math.cos(pitch.toDouble())).toFloat()
+            val lookY = eyeY + Math.sin(pitch.toDouble()).toFloat()
+            val lookZ = eyeZ + (-Math.cos(yaw.toDouble()) * Math.cos(pitch.toDouble())).toFloat()
 
-                val lookX = eyeX + (-Math.sin(yaw.toDouble()) * Math.cos(pitch.toDouble())).toFloat()
-                val lookY = eyeY + Math.sin(pitch.toDouble()).toFloat()
-                val lookZ = eyeZ + (-Math.cos(yaw.toDouble()) * Math.cos(pitch.toDouble())).toFloat()
-
-                try {
-                    Matrix.setLookAtM(
-                        viewMatrix, 0,
-                        eyeX, eyeY, eyeZ,
-                        lookX, lookY, lookZ,
-                        0f, 1f, 0f
-                    )
-                } catch (e: Exception) {
-                    android.util.Log.e("ESPOverlayGLSurface", "Error setting view matrix: ${e.message}")
-                    Matrix.setLookAtM(
-                        viewMatrix, 0,
-                        0f, 1.5f, 0f,
-                        0f, 1.5f, -5f,
-                        0f, 1f, 0f
-                    )
-                }
-            } else {
+            try {
+                Matrix.setLookAtM(
+                    viewMatrix, 0,
+                    eyeX, eyeY, eyeZ,
+                    lookX, lookY, lookZ,
+                    0f, 1f, 0f
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("ESPOverlayGLSurface", "Error setting view matrix: ${e.message}")
                 Matrix.setLookAtM(
                     viewMatrix, 0,
                     0f, 1.5f, 0f,
@@ -106,16 +93,10 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
             this.entityList = entities
         }
 
-        fun updatePlayerPosition(pos: Vector3f) {
-            this.playerPos = pos
-        }
-
-        fun updatePlayerRotation(rotation: Vector3f) {
+        fun updatePlayerState(position: Vector3f, rotation: Vector3f, cameraOrientation: Vector3f) {
+            this.playerPos = position
             this.playerRotation = rotation
-        }
-
-        fun updateCameraOrientation(orientation: Vector3f) {
-            this.cameraOrientation = orientation
+            this.cameraOrientation = cameraOrientation
         }
     }
 }
