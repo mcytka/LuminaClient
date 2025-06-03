@@ -88,11 +88,11 @@ class ESPElement : Element(
 
         val packet = interceptablePacket.packet
         val position = Vector3f.from(packet.position.x, packet.position.y, packet.position.z)
-        val rotation = packet.rotation
-        val cameraOrientation = packet.cameraOrientation
+        val rotationYaw = packet.rotation.y
+        val rotationPitch = packet.rotation.x
 
         glSurface?.let {
-            it.updatePlayerState(position, rotation, cameraOrientation)
+            it.updatePlayerPosition(position, rotationYaw, rotationPitch)
             it.updateEntities(searchForClosestEntities().map { entity -> entity.vec3Position })
         }
     }
