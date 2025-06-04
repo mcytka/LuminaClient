@@ -107,7 +107,7 @@ class ScaffoldElement : Element(
     }
 
     private fun isBlock(item: org.cloudburstmc.protocol.bedrock.data.inventory.ItemData): Boolean {
-        // Implement a simple check based on item identifier or properties
+        // Implement a simple check based on item name or properties
         val blockIdentifiers = setOf(
             "minecraft:stone",
             "minecraft:dirt",
@@ -135,7 +135,8 @@ class ScaffoldElement : Element(
             "minecraft:ice",
             "minecraft:sandstone"
         )
-        return item.identifier in blockIdentifiers
+        val itemName = item.name ?: return false
+        return itemName in blockIdentifiers
     }
 
     private fun placeBlock(blockPos: Vector3f, slot: Int) {
