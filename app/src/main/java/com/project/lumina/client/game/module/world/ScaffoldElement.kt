@@ -1,125 +1,119 @@
 package com.project.lumina.client.game.module.world
 
 import com.project.lumina.client.R
-import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.constructors.CheatCategory
+import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.game.InterceptablePacket
 import com.project.lumina.client.game.entity.LocalPlayer
 import com.project.lumina.client.game.inventory.PlayerInventory
+import com.project.lumina.client.game.world.Level
 import com.project.lumina.client.game.world.World
-import org.cloudburstmc.math.vector.Vector3i
-import org.cloudburstmc.protocol.bedrock.data.inventory.InventoryTransactionType
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryActionData
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventorySource
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransaction
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.action.PlaceAction
-import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
-import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
-import org.cloudburstmc.protocol.bedrock.packet.PlayerHotbarPacket
+import org.cloudburstmc.math.vector.Vector3f
+import org.cloudburstmc.protocol.bedrock.packet.PlayerActionPacket
+import org.cloudburstmc.protocol.bedrock.packet.PlayerBlockPlacementPacket
 import kotlin.math.floor
-import kotlin.math.roundToInt
 
 class ScaffoldElement : Element(
-    name = "Scaffold Test",
+    name = "Scaffold",
     category = CheatCategory.World,
-    displayNameResId = R.string.module_scaffold_display_name,
-    iconResId = R.drawable.ic_cube_outline_black_24dp
+    iconResId = R.drawable.ic_cube_outline_black_24dp,
+    displayNameResId = R.string.module_scaffold_display_name
 ) {
 
-    private var placeDelay = intValue("Place Delay", 100, 50..500)
-    private var placeRange = floatValue("Place Range", 4.0f, 1.0f..6.0f)
+    private var placeDelay by intValue("Place Delay", 100, 50..500)
+    private var placeRange by floatValue("Place Range", 5.0f, 1f..10f)
+    private var autoJump by boolValue("Auto Jump", true)
+    private var sneakWhilePlacing by boolValue("Sneak While Placing", true)
+
     private var lastPlaceTime = 0L
 
-    private val player: LocalPlayer
-        get() = session.localPlayer
-
-    private val inventory: PlayerInventory
-        get() = player.inventory as PlayerInventory
-
-    private val world: World
-        get() = session.world
-
-    override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
+    override fun beforePacketBound(packet: InterceptablePacket) {
         if (!isEnabled) return
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastPlaceTime < placeDelay) return
 
-        val packet = interceptablePacket.packet
-        if (packet is PlayerAuthInputPacket) {
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastPlaceTime < placeDelay) return
+        val player = session.localPlayer
+        val world = session.level
 
-            val blockPos = findValidBlockPlacementPosition() ?: return
-
-            val blockSlot = findBlockInHotbar() ?: return
-
-            if (player.heldItemSlot != blockSlot) {
-                switchToSlot(blockSlot)
+        val blockPos = findBlockToPlace(player, world)
+        if (blockPos != null) {
+            val slot = findBlockInInventory(player.inventory)
+            if (slot == -1) {
+                // No blocks found in inventory
+                return
             }
-
-            placeBlock(blockPos, blockSlot)
+            if (player.inventory.selectedSlot != slot) {
+                player.inventory.selectedSlot = slot
+            }
+            placeBlock(blockPos)
             lastPlaceTime = currentTime
+            if (autoJump && !player.isOnGround) {
+                player.jump()
+            }
         }
     }
 
-    private fun findValidBlockPlacementPosition(): Vector3i? {
+    private fun findBlockToPlace(player: LocalPlayer, world: Level): Vector3f? {
         val pos = player.vec3Position
-        val baseX = floor(pos.x).toInt()
-        val baseY = floor(pos.y).toInt() - 1
-        val baseZ = floor(pos.z).toInt()
+        val blockBelow = Vector3f.from(floor(pos.x), floor(pos.y) - 1, floor(pos.z))
 
-        // Check blocks around the player within placeRange for empty space to place block
-        for (dx in -placeRange.roundToInt()..placeRange.roundToInt()) {
-            for (dy in -1..1) {
-                for (dz in -placeRange.roundToInt()..placeRange.roundToInt()) {
-                    val checkPos = Vector3i.from(baseX + dx, baseY + dy, baseZ + dz)
-                    val blockId = world.getBlockIdAt(checkPos)
-                    if (blockId == 0) { // empty space
-                        // Check if block below is solid to place on
-                        val belowPos = Vector3i.from(checkPos.x, checkPos.y - 1, checkPos.z)
-                        val belowBlockId = world.getBlockIdAt(belowPos)
-                        if (belowBlockId != 0) {
-                            return checkPos
-                        }
-                    }
+        if (world.isAirBlock(blockBelow) && player.distance(blockBelow) <= placeRange) {
+            // Check if there is a supporting block adjacent to blockBelow
+            val adjacentPositions = listOf(
+                Vector3f.from(blockBelow.x + 1, blockBelow.y, blockBelow.z),
+                Vector3f.from(blockBelow.x - 1, blockBelow.y, blockBelow.z),
+                Vector3f.from(blockBelow.x, blockBelow.y, blockBelow.z + 1),
+                Vector3f.from(blockBelow.x, blockBelow.y, blockBelow.z - 1),
+                Vector3f.from(blockBelow.x, blockBelow.y - 1, blockBelow.z)
+            )
+            for (adjPos in adjacentPositions) {
+                if (!world.isAirBlock(adjPos)) {
+                    return blockBelow
                 }
             }
         }
         return null
     }
 
-    private fun findBlockInHotbar(): Int? {
-        return inventory.searchForItemInHotbar { item ->
-            item.isBlock()
+    private fun findBlockInInventory(inventory: PlayerInventory): Int {
+        for (i in 0 until inventory.size) {
+            val item = inventory.getItem(i)
+            if (item != null && item.isBlock()) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    private fun placeBlock(blockPos: Vector3f) {
+        if (sneakWhilePlacing) {
+            sendSneak(true)
+        }
+
+        val packet = PlayerBlockPlacementPacket().apply {
+            position = blockPos
+            face = 1 // Down face
+            hand = 0 // Main hand
+            cursorX = 0.5f
+            cursorY = 0.5f
+            cursorZ = 0.5f
+            insideBlock = false
+        }
+        session.clientBound(packet)
+
+        if (sneakWhilePlacing) {
+            sendSneak(false)
         }
     }
 
-    private fun switchToSlot(slot: Int) {
-        val packet = PlayerHotbarPacket().apply {
-            selectedHotbarSlot = slot
+    private fun sendSneak(sneak: Boolean) {
+        val action = if (sneak) PlayerActionPacket.Action.START_SNEAK else PlayerActionPacket.Action.STOP_SNEAK
+        val packet = PlayerActionPacket().apply {
+            this.action = action
+            this.blockPosition = null
+            this.face = 0
+            this.runtimeEntityId = session.localPlayer.runtimeEntityId
         }
-        session.serverBound(packet)
-    }
-
-    private fun placeBlock(blockPos: Vector3i, hotbarSlot: Int) {
-        val placeAction = PlaceAction(
-            hotbarSlot,
-            InventorySource.hotbar(),
-            blockPos,
-            0.5f, 0.5f, 0.5f, // click position in block space (center)
-            1 // face (top)
-        )
-        val transaction = InventoryTransaction(
-            InventoryTransactionType.ITEM_USE,
-            listOf(placeAction)
-        )
-        val packet = InventoryTransactionPacket().apply {
-            transactions.add(transaction)
-        }
-        session.serverBound(packet)
-    }
-
-    private fun ItemData.isBlock(): Boolean {
-        val id = this.identifier.lowercase()
-        return id.contains("block") || id.contains("stone") || id.contains("dirt")
+        session.clientBound(packet)
     }
 }
