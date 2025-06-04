@@ -9,8 +9,10 @@ import com.project.lumina.client.game.inventory.PlayerInventory
 import com.project.lumina.client.game.world.Level
 import com.project.lumina.client.game.world.World
 import org.cloudburstmc.math.vector.Vector3f
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
+import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerActionPacket
-import org.cloudburstmc.protocol.bedrock.packet.PlayerBlockPlacementPacket
 import kotlin.math.floor
 
 class ScaffoldElement : Element(
@@ -45,7 +47,7 @@ class ScaffoldElement : Element(
             if (player.inventory.selectedSlot != slot) {
                 player.inventory.selectedSlot = slot
             }
-            placeBlock(blockPos)
+            placeBlock(blockPos, slot)
             lastPlaceTime = currentTime
             if (autoJump && !player.isOnGround) {
                 player.jump()
@@ -85,19 +87,22 @@ class ScaffoldElement : Element(
         return -1
     }
 
-    private fun placeBlock(blockPos: Vector3f) {
+    private fun placeBlock(blockPos: Vector3f, slot: Int) {
         if (sneakWhilePlacing) {
             sendSneak(true)
         }
 
-        val packet = PlayerBlockPlacementPacket().apply {
-            position = blockPos
-            face = 1 // Down face
-            hand = 0 // Main hand
-            cursorX = 0.5f
-            cursorY = 0.5f
-            cursorZ = 0.5f
-            insideBlock = false
+        val itemInHand = session.localPlayer.inventory.getItem(slot)?.toItemData() ?: ItemData.AIR
+
+        val packet = InventoryTransactionPacket().apply {
+            transactionType = InventoryTransactionType.ITEM_USE
+            hotbarSlot = slot
+            blockPosition = blockPos.toIntVector3()
+            blockFace = 1 // Down face
+            runtimeEntityId = session.localPlayer.runtimeEntityId
+            itemInHand = itemInHand
+            playerPosition = session.localPlayer.vec3Position
+            clickPosition = session.localPlayer.vec3Position
         }
         session.clientBound(packet)
 
@@ -116,4 +121,10 @@ class ScaffoldElement : Element(
         }
         session.clientBound(packet)
     }
+
+    private fun Vector3f.toIntVector3() = org.cloudburstmc.math.vector.Vector3i.from(
+        this.x.toInt(),
+        this.y.toInt(),
+        this.z.toInt()
+    )
 }
