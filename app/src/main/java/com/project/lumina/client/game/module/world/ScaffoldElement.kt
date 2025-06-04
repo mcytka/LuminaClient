@@ -68,9 +68,9 @@ class ScaffoldElement : Element(
         val baseZ = floor(pos.z).toInt()
 
         // Check blocks around the player within placeRange for empty space to place block
-        for (dx in -placeRange.toInt()..placeRange.toInt()) {
+        for (dx in -placeRange.roundToInt()..placeRange.roundToInt()) {
             for (dy in -1..1) {
-                for (dz in -placeRange.toInt()..placeRange.toInt()) {
+                for (dz in -placeRange.roundToInt()..placeRange.roundToInt()) {
                     val checkPos = Vector3i.from(baseX + dx, baseY + dy, baseZ + dz)
                     val blockId = world.getBlockIdAt(checkPos)
                     if (blockId == 0) { // empty space
@@ -118,7 +118,7 @@ class ScaffoldElement : Element(
         session.serverBound(packet)
     }
 
-    private fun PlayerInventory.ItemData.isBlock(): Boolean {
+    private fun ItemData.isBlock(): Boolean {
         val id = this.identifier.lowercase()
         return id.contains("block") || id.contains("stone") || id.contains("dirt")
     }
