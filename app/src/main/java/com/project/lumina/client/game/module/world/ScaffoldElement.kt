@@ -45,8 +45,11 @@ class ScaffoldElement : Element(
                 return
             }
             if (player.inventory.heldItemSlot != slot) {
-                // heldItemSlot is private set, so we need to send a packet or use a method to change it
-                // For now, skipping slot change to avoid compilation error
+                // Change hotbar slot by sending PlayerHotbarPacket
+                val hotbarPacket = org.cloudburstmc.protocol.bedrock.packet.PlayerHotbarPacket().apply {
+                    selectedHotbarSlot = slot
+                }
+                session.clientBound(hotbarPacket)
             }
             placeBlock(blockPos, slot)
             lastPlaceTime = currentTime
