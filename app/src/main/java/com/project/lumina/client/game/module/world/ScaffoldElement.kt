@@ -59,22 +59,40 @@ class ScaffoldElement : Element(
         val pos = player.vec3Position
         val blockBelow = Vector3f.from(floor(pos.x), floor(pos.y) - 1, floor(pos.z))
 
-        if (world.isAirBlock(blockBelow) && player.distance(blockBelow) <= placeRange) {
-            // Check if there is a supporting block adjacent to blockBelow
-            val adjacentPositions = listOf(
-                Vector3f.from(blockBelow.x + 1, blockBelow.y, blockBelow.z),
-                Vector3f.from(blockBelow.x - 1, blockBelow.y, blockBelow.z),
-                Vector3f.from(blockBelow.x, blockBelow.y, blockBelow.z + 1),
-                Vector3f.from(blockBelow.x, blockBelow.y, blockBelow.z - 1),
-                Vector3f.from(blockBelow.x, blockBelow.y - 1, blockBelow.z)
-            )
-            for (adjPos in adjacentPositions) {
-                if (!world.isAirBlock(adjPos)) {
-                    return blockBelow
-                }
+        if (player.distance(blockBelow) > placeRange) {
+            return null
+        }
+
+        // Check if blockBelow is empty by checking entities at that position
+        val isBlockOccupied = world.entityMap.values.any { entity ->
+            val entityPos = entity.vec3Position
+            entityPos.x.toInt() == blockBelow.x.toInt() &&
+            entityPos.y.toInt() == blockBelow.y.toInt() &&
+            entityPos.z.toInt() == blockBelow.z.toInt()
+        }
+
+        if (isBlockOccupied) {
+            return null
+        }
+
+        // Check if there is a supporting block adjacent to blockBelow
+        val adjacentPositions = listOf(
+            Vector3f.from(blockBelow.x + 1, blockBelow.y, blockBelow.z),
+            Vector3f.from(blockBelow.x - 1, blockBelow.y, blockBelow.z),
+            Vector3f.from(blockBelow.x, blockBelow.y, blockBelow.z + 1),
+            Vector3f.from(blockBelow.x, blockBelow.y, blockBelow.z - 1),
+            Vector3f.from(blockBelow.x, blockBelow.y - 1, blockBelow.z)
+        )
+        val hasSupport = adjacentPositions.any { adjPos ->
+            world.entityMap.values.any { entity ->
+                val entityPos = entity.vec3Position
+                entityPos.x.toInt() == adjPos.x.toInt() &&
+                entityPos.y.toInt() == adjPos.y.toInt() &&
+                entityPos.z.toInt() == adjPos.z.toInt()
             }
         }
-        return null
+
+        return if (hasSupport) blockBelow else null
     }
 
     private fun findBlockInInventory(inventory: PlayerInventory): Int {
