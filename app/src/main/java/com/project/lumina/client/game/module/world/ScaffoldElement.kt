@@ -11,8 +11,7 @@ import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryAct
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventorySource
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction.ActionType // <-- НОВЫЙ ЯВНЫЙ ИМПОРТ
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction // Не импортируем ActionType отсюда
 import org.cloudburstmc.protocol.bedrock.packet.InventoryContentPacket
 import org.cloudburstmc.protocol.bedrock.packet.InventorySlotPacket
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
@@ -136,12 +135,12 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         val transaction = InventoryTransactionPacket().apply {
             transactionType = InventoryTransactionType.ITEM_USE
             
-            // Заполняем поля непосредственно в InventoryTransactionPacket для типа транзакции ITEM_USE
-            actionType = ActionType.PLACE.ordinal // Правильно используем ordinal для ActionType
+            // Устанавливаем actionType как целочисленное значение. Для PLACE это обычно 0.
+            actionType = 0 // ИСПРАВЛЕНО: Прямое целочисленное значение.
             blockPosition = targetPosition
             blockFace = 1 // Лицо UP (положительная ось Y) для размещения на стороне блока ниже
-            hotbarSlot = session.localPlayer.inventory.heldItemSlot // Исправлено: доступ через inventory
-            itemInHand = session.localPlayer.inventory.hand // Исправлено: доступ через inventory
+            hotbarSlot = session.localPlayer.inventory.heldItemSlot
+            itemInHand = session.localPlayer.inventory.hand
             playerPosition = session.localPlayer.vec3Position
             headPosition = session.localPlayer.vec3Rotation // Maps to player's head rotation
             clickPosition = Vector3f.from(0.5f, 0.5f, 0.5f) // Типичная позиция клика по поверхности блока
@@ -152,7 +151,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             // Это действие описывает изменение в инвентаре (один предмет потреблен)
             actions.add(InventoryActionData(
                 InventorySource.fromContainerWindowId(ContainerId.INVENTORY),
-                session.localPlayer.inventory.heldItemSlot, // Исправлено: доступ через inventory
+                session.localPlayer.inventory.heldItemSlot,
                 itemToPlace, // fromItem: Предмет до размещения
                 itemToPlace.toBuilder().count(itemToPlace.count - 1).build() // toItem: Предмет после размещения (на одну единицу меньше)
             ))
