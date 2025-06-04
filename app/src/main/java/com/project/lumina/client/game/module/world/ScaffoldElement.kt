@@ -16,7 +16,6 @@ import org.cloudburstmc.protocol.bedrock.packet.InventoryContentPacket
 import org.cloudburstmc.protocol.bedrock.packet.InventorySlotPacket
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
-import com.project.lumina.client.game.module.setting.stringValue // Импорт функции расширения stringValue
 
 class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : Element(
     name = "Scaffold",
@@ -29,7 +28,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     private var lastPlayerRotation: Vector3f = Vector3f.ZERO // pitch, yaw
 
     private var isScaffoldActive by boolValue("Scaffold Active", false)
-    // Новая настройка для предпочитаемых блоков
+    // Теперь используем правильную stringValue без параметра options
     private var preferredBlocks by stringValue("Preferred Blocks (identifiers, comma-separated)", "minecraft:planks,minecraft:wool,minecraft:stone")
 
     private val playerInventory: MutableMap<Int, ItemData> = mutableMapOf()
@@ -52,6 +51,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
                 val blockDefinition = session.blockMapping.getDefinition(session.blockMapping.getRuntimeByIdentifier(itemIdentifier))
 
                 if (blockDefinition != null && blockDefinition.identifier != "minecraft:air") {
+                    // It's a block and not air
                     if (preferredBlockIdentifiers.contains(itemIdentifier)) {
                         return itemData // Found a preferred block
                     }
@@ -145,8 +145,8 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             actionType = ItemUseTransaction.ActionType.PLACE.ordinal // Correctly using ordinal for ActionType
             blockPosition = targetPosition
             blockFace = 1 // Face UP (Y-axis positive) for placing on the side of the block below
-            hotbarSlot = session.localPlayer.selectedHotbarSlot
-            itemInHand = session.localPlayer.handItem // Item held by player in their hand
+            hotbarSlot = session.localPlayer.inventory.heldItemSlot // Исправлено
+            itemInHand = session.localPlayer.inventory.hand // Исправлено
             playerPosition = session.localPlayer.vec3Position
             headPosition = session.localPlayer.vec3Rotation // Maps to player's head rotation
             clickPosition = Vector3f.from(0.5f, 0.5f, 0.5f) // Typical click position on block surface
@@ -157,7 +157,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             // This action describes the change in inventory (one item consumed)
             actions.add(InventoryActionData(
                 InventorySource.fromContainerWindowId(ContainerId.INVENTORY),
-                session.localPlayer.selectedHotbarSlot,
+                session.localPlayer.inventory.heldItemSlot, // Исправлено
                 itemToPlace, // fromItem: The item before placing
                 itemToPlace.toBuilder().count(itemToPlace.count - 1).build() // toItem: The item after placing (one less count)
             ))
