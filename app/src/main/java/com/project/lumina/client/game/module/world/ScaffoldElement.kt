@@ -12,6 +12,7 @@ import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventorySou
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction.ActionType // <-- НОВЫЙ ЯВНЫЙ ИМПОРТ
 import org.cloudburstmc.protocol.bedrock.packet.InventoryContentPacket
 import org.cloudburstmc.protocol.bedrock.packet.InventorySlotPacket
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
@@ -136,7 +137,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             transactionType = InventoryTransactionType.ITEM_USE
             
             // Заполняем поля непосредственно в InventoryTransactionPacket для типа транзакции ITEM_USE
-            actionType = ItemUseTransaction.ActionType.PLACE.ordinal // Правильно используем ordinal для ActionType
+            actionType = ActionType.PLACE.ordinal // Правильно используем ordinal для ActionType
             blockPosition = targetPosition
             blockFace = 1 // Лицо UP (положительная ось Y) для размещения на стороне блока ниже
             hotbarSlot = session.localPlayer.inventory.heldItemSlot // Исправлено: доступ через inventory
