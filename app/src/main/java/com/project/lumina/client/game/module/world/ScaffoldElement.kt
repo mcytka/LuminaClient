@@ -15,10 +15,12 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.floor
 import kotlin.math.sqrt
 
+import com.project.lumina.client.R
+
 class ScaffoldElement : Element(
     name = "scaffold",
     category = CheatCategory.World,
-    displayNameResId = com.project.lumina.client.R.string.module_scaffold
+    displayNameResId = R.string.module_scaffold
 ) {
     // Player tracking data
     private var playerAuthInput: PlayerAuthInput? = null
@@ -43,7 +45,7 @@ class ScaffoldElement : Element(
     private fun shouldTriggerScaffold(): Boolean {
         val input = playerAuthInput ?: return false
         val pos = input.position
-        val belowPos = BlockPosition(floor(pos.x), floor(pos.y) - 1, floor(pos.z))
+        val belowPos = BlockPosition(floor(pos.x).toInt(), floor(pos.y).toInt() - 1, floor(pos.z).toInt())
         val blockBelow = worldCache[belowPos] ?: 0
         val isAirBelow = blockBelow == 0
         val horizontalSpeed = sqrt(input.velocity.x * input.velocity.x + input.velocity.z * input.velocity.z)
@@ -56,7 +58,7 @@ class ScaffoldElement : Element(
         val predictedX = input.position.x + input.velocity.x * lookaheadTime
         val predictedY = input.position.y + input.velocity.y * lookaheadTime
         val predictedZ = input.position.z + input.velocity.z * lookaheadTime
-        return BlockPosition(floor(predictedX), floor(predictedY) - 1, floor(predictedZ))
+        return BlockPosition(floor(predictedX).toInt(), floor(predictedY).toInt() - 1, floor(predictedZ).toInt())
     }
 
     // Select block from inventory to place
@@ -138,9 +140,9 @@ class ScaffoldElement : Element(
                 val p = packet as PlayerAuthInputPacket
                 val pos = p.position
                 val vel = p.motion
-                val pitch = p.rotation.x
-                val yaw = p.rotation.y
-                return PlayerAuthInput(Vector3(pos.x(), pos.y(), pos.z()), Vector3(vel.x(), 0f, vel.y()), pitch, yaw)
+        val pitch = p.rotation.x()
+        val yaw = p.rotation.y()
+        return PlayerAuthInput(Vector3(pos.x(), pos.y(), pos.z()), Vector3(vel.x(), 0f, vel.y()), pitch, yaw)
             }
         }
     }
@@ -194,7 +196,7 @@ class ScaffoldElement : Element(
                 fun parseUpdateBlock(packet: InterceptablePacket): BlockUpdate? {
                 val p = packet as UpdateBlockPacket
                 val pos = p.blockPosition
-                return BlockUpdate(BlockPosition(pos.x(), pos.y(), pos.z()), p.blockRuntimeId)
+                return BlockUpdate(BlockPosition(pos.x(), pos.y(), pos.z()), p.getBlockRuntimeId())
             }
     }
 
@@ -212,8 +214,8 @@ class ScaffoldElement : Element(
                 packet.blockPosition = org.cloudburstmc.math.vector.Vector3i.from(targetPos.x, targetPos.y, targetPos.z)
                 packet.blockFace = 1 // UP face
                 packet.itemInHandNetId = blockSlot.blockId
-                packet.playerPosition = org.cloudburstmc.math.vector.Vector3f(playerInput.position.x, playerInput.position.y, playerInput.position.z)
-                packet.headRotation = org.cloudburstmc.math.vector.Vector2f(playerInput.pitch, playerInput.yaw)
+                packet.playerPosition = org.cloudburstmc.math.vector.Vector3f(playerInput.position.x.toFloat(), playerInput.position.y.toFloat(), playerInput.position.z.toFloat())
+                packet.headRotation = org.cloudburstmc.math.vector.Vector2f(playerInput.pitch.toFloat(), playerInput.yaw.toFloat())
                 return packet
             }
     }
