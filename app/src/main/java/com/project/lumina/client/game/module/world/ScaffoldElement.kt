@@ -7,17 +7,18 @@ import com.project.lumina.client.game.InterceptablePacket
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId
-import org.cloudburstmc.protocol.bedrock.data.inventory.InventoryActionData
-import org.cloudburstmc.protocol.bedrock.data.inventory.InventorySource
-import org.cloudburstmc.protocol.bedrock.data.inventory.InventoryTransactionType
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryActionData // Исправлено
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventorySource // Исправлено
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType // Исправлено
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction
 import org.cloudburstmc.protocol.bedrock.packet.InventoryContentPacket
 import org.cloudburstmc.protocol.bedrock.packet.InventorySlotPacket
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
+import com.project.lumina.client.game.module.setting.stringValue // Импорт функции расширения stringValue
 
-class ScaffoldElement(iconResId: Int = R.drawable.ic_sword_cross_24dp) : Element(
+class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : Element(
     name = "Scaffold",
     category = CheatCategory.World,
     iconResId,
@@ -37,12 +38,8 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_sword_cross_24dp) : Element
         val preferredBlockIdentifiers = preferredBlocks.split(",")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
-            .toSet() // Use a Set for efficient lookup
+            .toSet()
 
-        // Iterate through inventory slots to find any usable block
-        // We iterate 0 to 35 for inventory slots, then check hotbar slots if needed
-        // Assuming hotbar slots are part of the larger inventory map.
-        // If not, a separate lookup for hotbar will be needed.
         val inventoryIndices = playerInventory.keys.sorted()
 
         // First, try to find preferred blocks
@@ -51,10 +48,10 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_sword_cross_24dp) : Element
 
             if (itemData.count > 0 && itemData.definition != null) {
                 val itemIdentifier = itemData.definition.identifier // e.g., "minecraft:planks"
-                val blockRuntimeId = session.blockMapping.getRuntimeByIdentifier(itemIdentifier) // Get block runtime ID from its identifier
+                // Check if the item is a block by attempting to get its block definition
+                val blockDefinition = session.blockMapping.getDefinition(session.blockMapping.getRuntimeByIdentifier(itemIdentifier))
 
-                if (blockRuntimeId != 0 && blockRuntimeId != session.blockMapping.airId) {
-                    // It's a block and not air
+                if (blockDefinition != null && blockDefinition.identifier != "minecraft:air") {
                     if (preferredBlockIdentifiers.contains(itemIdentifier)) {
                         return itemData // Found a preferred block
                     }
@@ -68,9 +65,9 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_sword_cross_24dp) : Element
 
             if (itemData.count > 0 && itemData.definition != null) {
                 val itemIdentifier = itemData.definition.identifier
-                val blockRuntimeId = session.blockMapping.getRuntimeByIdentifier(itemIdentifier)
+                val blockDefinition = session.blockMapping.getDefinition(session.blockMapping.getRuntimeByIdentifier(itemIdentifier))
 
-                if (blockRuntimeId != 0 && blockRuntimeId != session.blockMapping.airId) {
+                if (blockDefinition != null && blockDefinition.identifier != "minecraft:air") {
                     return itemData // Found any usable block
                 }
             }
@@ -145,17 +142,16 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_sword_cross_24dp) : Element
             transactionType = InventoryTransactionType.ITEM_USE
             
             // Set fields directly on InventoryTransactionPacket for ITEM_USE
-            actionType = ItemUseTransaction.ActionType.PLACE.ordinal // Use ordinal to get the int value of the enum
+            actionType = ItemUseTransaction.ActionType.PLACE.ordinal // Correctly using ordinal for ActionType
             blockPosition = targetPosition
             blockFace = 1 // Face UP (Y-axis positive) for placing on the side of the block below
             hotbarSlot = session.localPlayer.selectedHotbarSlot
             itemInHand = session.localPlayer.handItem // Item held by player in their hand
             playerPosition = session.localPlayer.vec3Position
-            // headPosition is typically playerPosition + eye height
-            headPosition = session.localPlayer.vec3Position.add(0f, 1.62f, 0f) // Approximate eye height
+            headPosition = session.localPlayer.vec3Rotation // Maps to player's head rotation
             clickPosition = Vector3f.from(0.5f, 0.5f, 0.5f) // Typical click position on block surface
 
-            // Set the blockDefinition for the transaction packet
+            // Set the blockDefinition for the transaction packet. Get it from the item's runtime ID.
             blockDefinition = session.blockMapping.getDefinition(itemToPlace.definition.runtimeId)
 
             // This action describes the change in inventory (one item consumed)
