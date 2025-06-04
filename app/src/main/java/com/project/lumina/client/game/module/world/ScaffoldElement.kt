@@ -1,185 +1,220 @@
 package com.project.lumina.client.game.module.world
 
-import com.project.lumina.client.R
-import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.constructors.Element
+import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.game.InterceptablePacket
-import com.project.lumina.client.game.entity.LocalPlayer
-import com.project.lumina.client.game.inventory.PlayerInventory
-import com.project.lumina.client.game.world.Level
-import com.project.lumina.client.game.world.World
-import org.cloudburstmc.math.vector.Vector3f
-import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
+import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
+import org.cloudburstmc.protocol.bedrock.packet.InventoryContentPacket
+import org.cloudburstmc.protocol.bedrock.packet.InventorySlotPacket
+import org.cloudburstmc.protocol.bedrock.packet.LevelChunkPacket
+import org.cloudburstmc.protocol.bedrock.packet.UpdateBlockPacket
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
-import org.cloudburstmc.protocol.bedrock.packet.PlayerActionPacket
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
+import kotlinx.coroutines.*
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.floor
+import kotlin.math.sqrt
 
 class ScaffoldElement : Element(
-    name = "Scaffold",
+    name = "scaffold",
     category = CheatCategory.World,
-    iconResId = R.drawable.ic_cube_outline_black_24dp,
-    displayNameResId = R.string.module_scaffold_display_name
+    displayNameResId = com.project.lumina.client.R.string.module_scaffold
 ) {
+    // Player tracking data
+    private var playerAuthInput: PlayerAuthInput? = null
 
-    private var placeDelay by intValue("Place Delay", 100, 50..500)
-    private var placeRange by floatValue("Place Range", 5.0f, 1f..10f)
-    private var autoJump by boolValue("Auto Jump", true)
-    private var sneakWhilePlacing by boolValue("Sneak While Placing", true)
+    // Inventory tracking
+    private val inventorySlots = ConcurrentHashMap<Int, InventorySlot>()
 
+    // World cache: simple 3D block cache around player
+    private val worldCache = ConcurrentHashMap<BlockPosition, Int>() // Block position to block ID
+
+    // Rate limiting
     private var lastPlaceTime = 0L
+    private val placeDelayMs = 100L // 10 blocks per second max
 
+    // Coroutine scope for async tasks
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+    // Lookahead time for predictive placement
+    private val lookaheadTime = 0.1f
+
+    // Trigger scaffold when player is moving horizontally and no block below
+    private fun shouldTriggerScaffold(): Boolean {
+        val input = playerAuthInput ?: return false
+        val pos = input.position
+        val belowPos = BlockPosition(floor(pos.x), floor(pos.y) - 1, floor(pos.z))
+        val blockBelow = worldCache[belowPos] ?: 0
+        val isAirBelow = blockBelow == 0
+        val horizontalSpeed = sqrt(input.velocity.x * input.velocity.x + input.velocity.z * input.velocity.z)
+        return isAirBelow && horizontalSpeed > 0.01f
+    }
+
+    // Calculate target block position for placement
+    private fun calculateTargetPosition(): BlockPosition? {
+        val input = playerAuthInput ?: return null
+        val predictedX = input.position.x + input.velocity.x * lookaheadTime
+        val predictedY = input.position.y + input.velocity.y * lookaheadTime
+        val predictedZ = input.position.z + input.velocity.z * lookaheadTime
+        return BlockPosition(floor(predictedX), floor(predictedY) - 1, floor(predictedZ))
+    }
+
+    // Select block from inventory to place
+    private fun selectBlockFromInventory(): InventorySlot? {
+        return inventorySlots.values.firstOrNull { it.isPlaceableBlock() }
+    }
+
+    // Intercept packets to track player input, inventory, and world state
     override fun beforePacketBound(packet: InterceptablePacket) {
-        if (!isEnabled) return
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastPlaceTime < placeDelay) return
-
-        val player = session.localPlayer
-        val world = session.level
-
-        val blockPos = findBlockToPlace(player, world)
-        if (blockPos != null) {
-            val slot = findBlockInInventory(player.inventory)
-            if (slot == -1) {
-                // No blocks found in inventory
-                return
+        when (packet.name) {
+            "PlayerAuthInputPacket" -> {
+                playerAuthInput = PlayerAuthInput.fromPacket(packet)
             }
-            if (player.inventory.heldItemSlot != slot) {
-                // Change hotbar slot by sending PlayerHotbarPacket
-                val hotbarPacket = org.cloudburstmc.protocol.bedrock.packet.PlayerHotbarPacket().apply {
-                    selectedHotbarSlot = slot
+            "InventoryContentPacket" -> {
+                inventorySlots.clear()
+                inventorySlots.putAll(InventorySlot.fromInventoryContentPacket(packet))
+            }
+            "InventorySlotPacket" -> {
+                val slot = InventorySlot.fromInventorySlotPacket(packet)
+                if (slot != null) {
+                    inventorySlots[slot.slot] = slot
                 }
-                session.clientBound(hotbarPacket)
             }
-            placeBlock(blockPos, slot)
-            lastPlaceTime = currentTime
-            if (autoJump && !player.isOnGround) {
-                // No jump method available; skipping jump simulation
+            "LevelChunkPacket" -> {
+                val blocks = WorldCacheUpdater.parseLevelChunk(packet)
+                worldCache.putAll(blocks)
+            }
+            "UpdateBlockPacket" -> {
+                val blockUpdate = WorldCacheUpdater.parseUpdateBlock(packet)
+                if (blockUpdate != null) {
+                    worldCache[blockUpdate.position] = blockUpdate.blockId
+                }
+            }
+        }
+
+        // Scaffold logic trigger
+        if (shouldTriggerScaffold()) {
+            val targetPos = calculateTargetPosition()
+            val blockSlot = selectBlockFromInventory()
+            if (targetPos != null && blockSlot != null) {
+                val now = System.currentTimeMillis()
+                if (now - lastPlaceTime >= placeDelayMs) {
+                    lastPlaceTime = now
+                    sendPlaceBlockPacket(targetPos, blockSlot)
+                }
             }
         }
     }
 
-    private fun findBlockToPlace(player: LocalPlayer, world: Level): Vector3f? {
-        val pos = player.vec3Position
-        val blockBelow = Vector3f.from(floor(pos.x), floor(pos.y) - 1, floor(pos.z))
-
-        if (player.distance(blockBelow) > placeRange) {
-            return null
-        }
-
-        // Check if blockBelow is empty by checking entities at that position
-        val isBlockOccupied = world.entityMap.values.any { entity ->
-            val entityPos = entity.vec3Position
-            entityPos.x.toInt() == blockBelow.x.toInt() &&
-            entityPos.y.toInt() == blockBelow.y.toInt() &&
-            entityPos.z.toInt() == blockBelow.z.toInt()
-        }
-
-        if (isBlockOccupied) {
-            return null
-        }
-
-        // Check if there is a supporting block adjacent to blockBelow
-        val adjacentPositions = listOf(
-            Vector3f.from(blockBelow.x + 1, blockBelow.y, blockBelow.z),
-            Vector3f.from(blockBelow.x - 1, blockBelow.y, blockBelow.z),
-            Vector3f.from(blockBelow.x, blockBelow.y, blockBelow.z + 1),
-            Vector3f.from(blockBelow.x, blockBelow.y, blockBelow.z - 1),
-            Vector3f.from(blockBelow.x, blockBelow.y - 1, blockBelow.z)
+    // Send InventoryTransactionPacket to place block
+    private fun sendPlaceBlockPacket(targetPos: BlockPosition, blockSlot: InventorySlot) {
+        val packet = InventoryTransactionPacketBuilder.buildPlaceBlockPacket(
+            targetPos,
+            blockSlot,
+            playerAuthInput ?: return
         )
-        val hasSupport = adjacentPositions.any { adjPos ->
-            world.entityMap.values.any { entity ->
-                val entityPos = entity.vec3Position
-                entityPos.x.toInt() == adjPos.x.toInt() &&
-                entityPos.y.toInt() == adjPos.y.toInt() &&
-                entityPos.z.toInt() == adjPos.z.toInt()
+        sendPacketToServer(packet)
+    }
+
+    // Send packet to server (stub, to be implemented with actual sending logic)
+    private fun sendPacketToServer(packet: Any) {
+        // Example sending logic (to be replaced with actual network sending)
+        // For example, use GameManager or network service to send packet
+        // GameManager.sendPacket(packet)
+    }
+
+    // Data classes and helpers
+
+    data class Vector3(val x: Float, val y: Float, val z: Float)
+
+    data class PlayerAuthInput(
+        val position: Vector3,
+        val velocity: Vector3,
+        val pitch: Float,
+        val yaw: Float
+    ) {
+        companion object {
+        fun fromPacket(packet: InterceptablePacket): PlayerAuthInput {
+                val p = packet as PlayerAuthInputPacket
+                val pos = p.position
+                val vel = p.motion
+                val pitch = p.rotation.x
+                val yaw = p.rotation.y
+                return PlayerAuthInput(Vector3(pos.x(), pos.y(), pos.z()), Vector3(vel.x(), 0f, vel.y()), pitch, yaw)
             }
         }
-
-        return if (hasSupport) blockBelow else null
     }
 
-    private fun findBlockInInventory(inventory: PlayerInventory): Int {
-        for (i in inventory.content.indices) {
-            val item = inventory.content[i]
-            if (item != null && isBlock(item)) {
-                return i
+    data class InventorySlot(
+        val slot: Int,
+        val blockId: Int,
+        val count: Int
+    ) {
+        fun isPlaceableBlock(): Boolean {
+            // TODO: Determine if blockId corresponds to a placeable block
+            return count > 0 && blockId != 0
+        }
+
+        companion object {
+            fun fromInventoryContentPacket(packet: InterceptablePacket): Map<Int, InventorySlot> {
+                val p = packet as InventoryContentPacket
+                val slots = mutableMapOf<Int, InventorySlot>()
+                p.contents.forEachIndexed { index, itemData ->
+                    slots[index] = InventorySlot(index, itemData.getNetId(), itemData.getCount())
+                }
+                return slots
+            }
+
+            fun fromInventorySlotPacket(packet: InterceptablePacket): InventorySlot? {
+                val p = packet as InventorySlotPacket
+                val itemData = p.item
+                return InventorySlot(p.slot, itemData.getNetId(), itemData.getCount())
             }
         }
-        return -1
     }
 
-    private fun isBlock(item: org.cloudburstmc.protocol.bedrock.data.inventory.ItemData): Boolean {
-        // Implement a simple check based on item name or properties
-        val blockIdentifiers = setOf(
-            "minecraft:stone",
-            "minecraft:dirt",
-            "minecraft:cobblestone",
-            "minecraft:planks",
-            "minecraft:oak_planks",
-            "minecraft:spruce_planks",
-            "minecraft:birch_planks",
-            "minecraft:jungle_planks",
-            "minecraft:acacia_planks",
-            "minecraft:dark_oak_planks",
-            "minecraft:sand",
-            "minecraft:gravel",
-            "minecraft:glass",
-            "minecraft:obsidian",
-            "minecraft:brick_block",
-            "minecraft:stone_bricks",
-            "minecraft:mossy_stone_bricks",
-            "minecraft:nether_bricks",
-            "minecraft:soul_sand",
-            "minecraft:clay",
-            "minecraft:terracotta",
-            "minecraft:glowstone",
-            "minecraft:snow",
-            "minecraft:ice",
-            "minecraft:sandstone"
-        )
-        val itemName = item.name ?: return false
-        return itemName in blockIdentifiers
+    data class BlockPosition(val x: Int, val y: Int, val z: Int)
+
+    object WorldCacheUpdater {
+                fun parseLevelChunk(packet: InterceptablePacket): Map<BlockPosition, Int> {
+                val p = packet as LevelChunkPacket
+                val blocks = mutableMapOf<BlockPosition, Int>()
+                val chunk = p.chunk
+                for (x in 0 until 16) {
+                    for (y in 0 until chunk.height) {
+                        for (z in 0 until 16) {
+                            val block = chunk.getBlock(x, y, z)
+                            blocks[BlockPosition(x + chunk.x * 16, y, z + chunk.z * 16)] = block.runtimeId
+                        }
+                    }
+                }
+                return blocks
+            }
+
+                fun parseUpdateBlock(packet: InterceptablePacket): BlockUpdate? {
+                val p = packet as UpdateBlockPacket
+                val pos = p.blockPosition
+                return BlockUpdate(BlockPosition(pos.x(), pos.y(), pos.z()), p.blockRuntimeId)
+            }
     }
 
-    private fun placeBlock(blockPos: Vector3f, slot: Int) {
-        if (sneakWhilePlacing) {
-            sendSneak(true)
-        }
+    data class BlockUpdate(val position: BlockPosition, val blockId: Int)
 
-        val itemInHand = session.localPlayer.inventory.getItem(slot)?.toItemData() ?: ItemData.AIR
-
-        val packet = InventoryTransactionPacket().apply {
-            transactionType = InventoryTransactionType.ITEM_USE
-            hotbarSlot = slot
-            blockPosition = blockPos.toIntVector3()
-            blockFace = 1 // Down face
-            runtimeEntityId = session.localPlayer.runtimeEntityId
-            itemInHand = itemInHand
-            playerPosition = session.localPlayer.vec3Position
-            clickPosition = session.localPlayer.vec3Position
-        }
-        session.clientBound(packet)
-
-        if (sneakWhilePlacing) {
-            sendSneak(false)
-        }
+    object InventoryTransactionPacketBuilder {
+            fun buildPlaceBlockPacket(
+            targetPos: BlockPosition,
+            blockSlot: InventorySlot,
+            playerInput: PlayerAuthInput
+        ): Any {
+                val packet = InventoryTransactionPacket()
+                packet.transactionType = InventoryTransactionPacket.Type.USE_ITEM
+                packet.actionType = InventoryTransactionPacket.Action.CLICK_BLOCK
+                packet.blockPosition = org.cloudburstmc.math.vector.Vector3i.from(targetPos.x, targetPos.y, targetPos.z)
+                packet.blockFace = 1 // UP face
+                packet.itemInHandNetId = blockSlot.blockId
+                packet.playerPosition = org.cloudburstmc.math.vector.Vector3f(playerInput.position.x, playerInput.position.y, playerInput.position.z)
+                packet.headRotation = org.cloudburstmc.math.vector.Vector2f(playerInput.pitch, playerInput.yaw)
+                return packet
+            }
     }
-
-    private fun sendSneak(sneak: Boolean) {
-        val action = if (sneak) PlayerActionPacket.Action.START_SNEAK else PlayerActionPacket.Action.STOP_SNEAK
-        val packet = PlayerActionPacket().apply {
-            this.action = action
-            this.blockPosition = null
-            this.face = 0
-            this.runtimeEntityId = session.localPlayer.runtimeEntityId
-        }
-        session.clientBound(packet)
-    }
-
-    private fun Vector3f.toIntVector3() = org.cloudburstmc.math.vector.Vector3i.from(
-        this.x.toInt(),
-        this.y.toInt(),
-        this.z.toInt()
-    )
 }
