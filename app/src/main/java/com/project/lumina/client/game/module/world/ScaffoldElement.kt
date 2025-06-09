@@ -81,24 +81,24 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
 
             val posBelow = Vector3i.from(
                 floor(packet.position.x).toInt(),
-                floor(packet.position.y).toInt() - 2,
+                floor(packet.position.y).toInt() - 1, // Проверяем блок под ногами
                 floor(packet.position.z).toInt()
             )
             val blockBelowId = world.getBlockIdAt(posBelow)
-            if (blockBelowId != 0) return
+            if (blockBelowId == 0) {
+                if (debugMode) {
+                    session.displayClientMessage("Scaffold: No block below at $posBelow")
+                }
+                return
+            }
 
             // Проверка и переключение слота
             val currentSlot = localPlayer.inventory.heldItemSlot
             if (currentSlot != blockSlot) {
-                val hotbarPacket = PlayerHotbarPacket().apply {
-                    selectedHotbarSlot = blockSlot
-                    containerId = 0 // Горячая панель
-                    selectHotbarSlot = true
-                }
-                session.serverBound(hotbarPacket)
                 if (debugMode) {
-                    session.displayClientMessage("Scaffold: Switching from slot $currentSlot to slot $blockSlot")
+                    session.displayClientMessage("Scaffold: Switching from slot $currentSlot to slot $blockSlot (manual switch required)")
                 }
+                // Отключаем автоматическое переключение, если сервер не поддерживает
             } else if (debugMode) {
                 session.displayClientMessage("Scaffold: Already on slot $blockSlot")
             }
@@ -128,11 +128,11 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         inputPacket: PlayerAuthInputPacket,
         world: World
     ) {
-        val clickPosition = Vector3i.from(blockPosition.x, blockPosition.y - 1, blockPosition.z)
-        val blockIdAtClickPos = world.getBlockIdAt(clickPosition)
+        val clickPosition = Vector3i.from(blockPosition.x, blockPosition.y + 1, blockPosition.z) // Позиция для размещения
+        val blockIdAtClickPos = world.getBlockIdAt(Vector3i.from(blockPosition.x, blockPosition.y, blockPosition.z)) // Проверяем блок под ногами
         if (blockIdAtClickPos == 0) {
             if (debugMode) {
-                session.displayClientMessage("Scaffold: No block to click on at $clickPosition")
+                session.displayClientMessage("Scaffold: No block to click on at $blockPosition")
             }
             return
         }
@@ -147,7 +147,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         // Настройка ItemUseTransaction
         val itemUseTransaction = ItemUseTransaction()
         itemUseTransaction.actionType = 1 // PLACE_BLOCK (проверь перечисление)
-        itemUseTransaction.blockPosition = clickPosition
+        itemUseTransaction.blockPosition = blockPosition // Позиция блока под ногами
         itemUseTransaction.blockFace = 1 // UP
         itemUseTransaction.hotbarSlot = localPlayer.inventory.heldItemSlot // Используем текущий слот
         itemUseTransaction.itemInHand = itemInHand
@@ -169,7 +169,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         val transactionPacket = InventoryTransactionPacket()
         transactionPacket.transactionType = InventoryTransactionType.ITEM_USE
         transactionPacket.runtimeEntityId = localPlayer.runtimeEntityId
-        transactionPacket.blockPosition = clickPosition
+        transactionPacket.blockPosition = blockPosition
         transactionPacket.blockFace = 1 // UP
         transactionPacket.hotbarSlot = localPlayer.inventory.heldItemSlot // Используем текущий слот
         transactionPacket.itemInHand = itemInHand
@@ -180,19 +180,18 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         // Отправка пакета
         session.serverBound(transactionPacket)
         if (debugMode) {
-            session.displayClientMessage("Scaffold: Sent InventoryTransactionPacket at $blockPosition with item ${itemInHand.itemDefinition.getRuntimeId()}, slot ${localPlayer.inventory.heldItemSlot}")
+            session.displayClientMessage("Scaffold: Sent InventoryTransactionPacket at $clickPosition with item ${itemInHand.itemDefinition.getRuntimeId()}, slot ${localPlayer.inventory.heldItemSlot}")
         }
 
         // Обновляем кэш инвентаря только после подтверждения (предполагаем)
-        // Пока оставляем без изменения
-        world.setBlockIdAt(blockPosition, itemInHand.itemDefinition.getRuntimeId())
+        world.setBlockIdAt(clickPosition, itemInHand.itemDefinition.getRuntimeId())
     }
 
-    // Исправленный метод afterPacketBound
+    // Обработка ответа сервера
     override fun afterPacketBound(packet: BedrockPacket) {
         if (debugMode && packet is InventoryTransactionPacket) {
             val currentSlot = session.localPlayer?.inventory?.heldItemSlot ?: -1
-            session.displayClientMessage("Scaffold: Received response for InventoryTransactionPacket, slot $currentSlot")
+            session.displayClientMessage("Scaffold: Received response for InventoryTransactionPacket, slot $currentSlot, packet: ${packet.toString().take(50)}...")
         }
     }
 }
