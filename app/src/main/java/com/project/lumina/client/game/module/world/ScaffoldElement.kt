@@ -166,7 +166,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         transactionPacket.hotbarSlot = blockSlot
         transactionPacket.itemInHand = itemInHand
         transactionPacket.playerPosition = inputPacket.position
-        transactionPacket.clickPosition = Vector3i.from(0, 0, 0) // Центр блока
+        transactionPacket.clickPosition = Vector3f.from(0.5f, 0f, 0.5f) // Исправлено на Vector3f
         transactionPacket.actions.addAll(itemUseTransaction.actions)
 
         session.serverBound(transactionPacket)
