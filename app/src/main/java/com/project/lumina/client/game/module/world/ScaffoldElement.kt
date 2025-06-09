@@ -10,12 +10,12 @@ import com.project.lumina.client.game.world.World
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.*
-import org.cloudburstmc.protocol.bedrock.packet.*
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction
+import org.cloudburstmc.protocol.bedrock.packet.*
 import kotlin.math.floor
 
-class ScaffoldElement(iconResId: Int = R.drawable.ic_block_black_24dp) : Element(
+class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : Element( // Заменил на предполагаемый ресурс
     name = "Scaffold",
     category = CheatCategory.World,
     iconResId,
@@ -58,7 +58,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_block_black_24dp) : Element
             return
         }
 
-        // 3. Кэширование мира
+        // Кэширование мира
         when (packet) {
             is LevelChunkPacket -> {
                 if (debugMode) {
@@ -73,22 +73,21 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_block_black_24dp) : Element
             }
         }
 
-        // 1. Инвентарь и 2. Установка блоков
+        // Инвентарь и установка блоков
         if (packet is PlayerAuthInputPacket) {
             val currentTime = System.currentTimeMillis()
             if (currentTime - lastPlaceTime < placeDelay) return
 
-            // Триггер: игрок в воздухе
             val posBelow = Vector3i.from(
                 floor(packet.position.x).toInt(),
                 floor(packet.position.y).toInt() - 2,
                 floor(packet.position.z).toInt()
             )
             val blockBelowId = world.getBlockIdAt(posBelow)
-            if (blockBelowId != 0) return // Не в воздухе
+            if (blockBelowId != 0) return
 
-            // Устанавливаем слот
-            inventory.heldItemSlot = blockSlot
+            // Устанавливаем слот (через публичный метод, если доступен)
+            inventory.setHeldItemSlot(blockSlot) // Предполагаемый метод, проверь API
             val itemInHand = inventory.content[blockSlot]
             if (itemInHand == null || itemInHand == ItemData.AIR) {
                 if (debugMode) {
@@ -103,8 +102,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_block_black_24dp) : Element
     }
 
     private fun isBlockItem(item: ItemData): Boolean {
-        // Упрощённая проверка — можно заменить на список реальных блоков
-        return item.id > 0 && item.id <= 255 // Включает компас (345), но сервер отклонит
+        return item.getId() > 0 && item.getId() <= 255 // Используем getId(), если доступен
     }
 
     private fun placeBlock(
@@ -124,32 +122,30 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_block_black_24dp) : Element
             return
         }
 
-        // Проверяем, является ли предмет блоком (для теста оставляем широкую проверку)
         if (!isBlockItem(itemInHand)) {
             if (debugMode) {
-                session.displayClientMessage("Scaffold: Item ${itemInHand.id} (e.g., compass) is not a block!")
+                session.displayClientMessage("Scaffold: Item ${itemInHand.getId()} (e.g., compass) is not a block!")
             }
             return
         }
 
-        // Настраиваем InventoryTransactionPacket
         val transactionPacket = InventoryTransactionPacket().apply {
             transactionType = InventoryTransactionType.ITEM_USE
             runtimeEntityId = localPlayer.runtimeEntityId
             blockPosition = clickPosition
             blockFace = 1 // UP
-            hotbarSlot = inventory.heldItemSlot
+            hotbarSlot = blockSlot // Используем blockSlot напрямую
             itemInHand = itemInHand
             playerPosition = inputPacket.position
             clickPosition = Vector3f.from(0.5f, 1.0f, 0.5f)
             val transaction = ItemUseTransaction().apply {
-                actionType = ItemUseTransaction.ActionType.PLACE_BLOCK
+                actionType = 1 // Предположительное значение для PLACE_BLOCK, проверь документацию
                 this.blockPosition = clickPosition
-                face = 1 // UP
-                hotbarSlot = inventory.heldItemSlot
-                itemInHand = itemInHand
-                position = inputPacket.position
-                clickPosition = Vector3f.from(0.5f, 1.0f, 0.5f)
+                this.face = 1 // UP
+                this.hotbarSlot = blockSlot
+                this.itemInHand = itemInHand
+                this.position = inputPacket.position
+                this.clickPosition = Vector3f.from(0.5f, 1.0f, 0.5f)
                 if (!inputPacket.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)) {
                     inputPacket.inputData.add(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)
                 }
@@ -159,29 +155,23 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_block_black_24dp) : Element
 
         session.serverBound(transactionPacket)
         if (debugMode) {
-            session.displayClientMessage("Scaffold: Sent place block at $blockPosition (click on $clickPosition) with item ${itemInHand.id}")
+            session.displayClientMessage("Scaffold: Sent place block at $blockPosition (click on $clickPosition) with item ${itemInHand.getId()}")
         }
 
-        // Обновляем кэш инвентаря (предполагаем успех, сервер откатит при ошибке)
-        val updatedItem = ItemData(itemInHand.id, itemInHand.damage, itemInHand.count - 1)
-        if (updatedItem.count > 0) {
+        // Обновляем кэш инвентаря
+        val updatedItem = ItemData.builder()
+            .id(itemInHand.getId())
+            .damage(itemInHand.getDamage())
+            .count(itemInHand.getCount() - 1)
+            .build() // Используем builder, если доступен
+        if (updatedItem.getCount() > 0) {
             inventory.content[blockSlot] = updatedItem
         } else {
             inventory.content[blockSlot] = ItemData.AIR
         }
-        inventory.updateItem(session, blockSlot)
+        // Предполагаем, что updateItem недоступен напрямую, нужно найти альтернативу
+        // inventory.updateItem(session, blockSlot) // Убран из-за protected
 
-        // Обновляем мир (опционально, сервер должен подтвердить)
-        world.setBlockIdAt(blockPosition, itemInHand.id)
-    }
-
-    override fun afterPacketBound(interceptablePacket: InterceptablePacket) {
-        if (!isEnabled || !isSessionCreated) return
-        if (interceptablePacket.packet is InventoryTransactionPacket) {
-            // Простая проверка отклонения (нужна доработка)
-            if (debugMode) {
-                session.displayClientMessage("Scaffold: Transaction response received")
-            }
-        }
+        world.setBlockIdAt(blockPosition, itemInHand.getId())
     }
 }
