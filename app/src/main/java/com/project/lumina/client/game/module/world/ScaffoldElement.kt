@@ -15,7 +15,8 @@ import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.*
 import org.cloudburstmc.protocol.bedrock.packet.*
 import com.project.lumina.client.game.registry.* // Импорт расширений
 import kotlin.math.floor
-import kotlin.math.abs
+import kotlin.math.sin
+import kotlin.math.cos
 
 class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : Element(
     name = "Scaffold",
@@ -68,7 +69,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
                 }
             }
             is UpdateBlockPacket -> {
-                if (!packet.definition.isAir) { // Игнорируем ломание
+                if (packet.definition.runtimeId != 0) { // Игнорируем воздух
                     world.setBlockIdAt(packet.blockPosition, packet.definition.runtimeId)
                     if (debugMode) {
                         session.displayClientMessage("Scaffold: Block updated at ${packet.blockPosition} to ${packet.definition.runtimeId}")
@@ -127,7 +128,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
 
             if (!isBlockItem(itemInHand)) {
                 if (debugMode) {
-                    session.displayClientMessage("Scaffold: Item ${itemInHand.itemDefinition.getRuntimeId()} (${itemInHand.itemDefinition.name}) is not a block!")
+                    session.displayClientMessage("Scaffold: Item ${itemInHand.itemDefinition.getRuntimeId()} (${itemInHand.itemDefinition.identifier}) is not a block!")
                 }
                 return
             }
@@ -138,7 +139,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     }
 
     private fun getClickPosition(basePos: Vector3i, yaw: Float): Vector3i {
-        // Определяем направление взгляда (примерная логика, можно уточнить)
+        // Определяем направление взгляда
         val angle = Math.toRadians(yaw.toDouble()).toFloat()
         val dx = -sin(angle).toInt() // Направление по X (север/юг)
         val dz = cos(angle).toInt()  // Направление по Z (запад/восток)
@@ -159,7 +160,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     private fun isBlockItem(item: ItemData): Boolean {
         val isBlock = item.isBlock() // Используем расширение
         if (debugMode && !isBlock) {
-            session.displayClientMessage("Scaffold: isBlock() returned false for item ${item.itemDefinition.getRuntimeId()} (${item.itemDefinition.name})")
+            session.displayClientMessage("Scaffold: isBlock() returned false for item ${item.itemDefinition.getRuntimeId()} (${item.itemDefinition.identifier})")
         }
         // Временная проверка для булыжника (runtimeId = 1)
         if (item.itemDefinition.getRuntimeId() == 1 && !isBlock) {
@@ -223,7 +224,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         // Отправка пакета
         session.serverBound(transactionPacket)
         if (debugMode) {
-            session.displayClientMessage("Scaffold: Sent InventoryTransactionPacket at $clickPosition with item ${itemInHand.itemDefinition.getRuntimeId()} (${itemInHand.itemDefinition.name}), face $blockFace, slot ${localPlayer.inventory.heldItemSlot}")
+            session.displayClientMessage("Scaffold: Sent InventoryTransactionPacket at $clickPosition with item ${itemInHand.itemDefinition.getRuntimeId()} (${itemInHand.itemDefinition.identifier}), face $blockFace, slot ${localPlayer.inventory.heldItemSlot}")
         }
 
         world.setBlockIdAt(clickPosition, itemInHand.itemDefinition.getRuntimeId())
