@@ -15,6 +15,7 @@ import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.*
 import org.cloudburstmc.protocol.bedrock.packet.*
 import com.project.lumina.client.game.registry.* // Импорт расширений
 import kotlin.math.floor
+import kotlin.math.abs
 
 class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : Element(
     name = "Scaffold",
@@ -59,7 +60,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             return
         }
 
-        // Кэширование мира
+        // Кэширование мира (игнорируем ломание блока для предотвращения ложных срабатываний)
         when (packet) {
             is LevelChunkPacket -> {
                 if (debugMode) {
@@ -67,9 +68,11 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
                 }
             }
             is UpdateBlockPacket -> {
-                world.setBlockIdAt(packet.blockPosition, packet.definition.runtimeId)
-                if (debugMode) {
-                    session.displayClientMessage("Scaffold: Block updated at ${packet.blockPosition} to ${packet.definition.runtimeId}")
+                if (!packet.definition.isAir) { // Игнорируем ломание
+                    world.setBlockIdAt(packet.blockPosition, packet.definition.runtimeId)
+                    if (debugMode) {
+                        session.displayClientMessage("Scaffold: Block updated at ${packet.blockPosition} to ${packet.definition.runtimeId}")
+                    }
                 }
             }
         }
@@ -79,26 +82,37 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             val currentTime = System.currentTimeMillis()
             if (currentTime - lastPlaceTime < placeDelay) return
 
+            val playerPos = packet.position
+            val playerYaw = packet.rotation.y // Угол поворота (Yaw) для направления взгляда
             val posBelow = Vector3i.from(
-                floor(packet.position.x).toInt(),
-                floor(packet.position.y).toInt() - 1, // Проверяем блок под ногами
-                floor(packet.position.z).toInt()
+                floor(playerPos.x).toInt(),
+                floor(playerPos.y - 1).toInt(), // Блок под ногами
+                floor(playerPos.z).toInt()
             )
             val blockBelowId = world.getBlockIdAt(posBelow)
             if (blockBelowId == 0) {
                 if (debugMode) {
-                    session.displayClientMessage("Scaffold: No block below at $posBelow")
+                    session.displayClientMessage("Scaffold: No block below at $posBelow (player at $playerPos)")
                 }
                 return
             }
 
-            // Проверка и переключение слота
+            // Определяем позицию впереди по направлению взгляда
+            val clickPosition = getClickPosition(posBelow, playerYaw)
+            val blockAheadId = world.getBlockIdAt(clickPosition)
+            if (blockAheadId != 0) {
+                if (debugMode) {
+                    session.displayClientMessage("Scaffold: Block ahead at $clickPosition, skipping placement")
+                }
+                return
+            }
+
+            // Проверка текущего слота
             val currentSlot = localPlayer.inventory.heldItemSlot
             if (currentSlot != blockSlot) {
                 if (debugMode) {
-                    session.displayClientMessage("Scaffold: Switching from slot $currentSlot to slot $blockSlot (manual switch required)")
+                    session.displayClientMessage("Scaffold: Current slot $currentSlot, expected $blockSlot (manual switch required)")
                 }
-                // Отключаем автоматическое переключение, если сервер не поддерживает
             } else if (debugMode) {
                 session.displayClientMessage("Scaffold: Already on slot $blockSlot")
             }
@@ -111,13 +125,48 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
                 return
             }
 
-            placeBlock(localPlayer, inventory, posBelow, itemInHand, packet, world)
+            if (!isBlockItem(itemInHand)) {
+                if (debugMode) {
+                    session.displayClientMessage("Scaffold: Item ${itemInHand.itemDefinition.getRuntimeId()} (${itemInHand.itemDefinition.name}) is not a block!")
+                }
+                return
+            }
+
+            placeBlock(localPlayer, inventory, clickPosition, itemInHand, packet, world, getBlockFace(playerYaw))
             lastPlaceTime = currentTime
         }
     }
 
+    private fun getClickPosition(basePos: Vector3i, yaw: Float): Vector3i {
+        // Определяем направление взгляда (примерная логика, можно уточнить)
+        val angle = Math.toRadians(yaw.toDouble()).toFloat()
+        val dx = -sin(angle).toInt() // Направление по X (север/юг)
+        val dz = cos(angle).toInt()  // Направление по Z (запад/восток)
+        return Vector3i.from(basePos.x + dx, basePos.y, basePos.z + dz) // Смещение на 1 блок вперёд
+    }
+
+    private fun getBlockFace(yaw: Float): Int {
+        // Определяем грань по углу поворота (Yaw)
+        val angle = (yaw % 360 + 360) % 360 // Нормализация угла
+        return when {
+            angle in 45.0..135.0 -> 3 // Юг
+            angle in 135.0..225.0 -> 4 // Запад
+            angle in 225.0..315.0 -> 2 // Север
+            else -> 5 // Восток
+        }
+    }
+
     private fun isBlockItem(item: ItemData): Boolean {
-        return item.isBlock() // Используем расширение из registry
+        val isBlock = item.isBlock() // Используем расширение
+        if (debugMode && !isBlock) {
+            session.displayClientMessage("Scaffold: isBlock() returned false for item ${item.itemDefinition.getRuntimeId()} (${item.itemDefinition.name})")
+        }
+        // Временная проверка для булыжника (runtimeId = 1)
+        if (item.itemDefinition.getRuntimeId() == 1 && !isBlock) {
+            session.displayClientMessage("Scaffold: Forcing bulyzhnik (ID 1) as block")
+            return true
+        }
+        return isBlock
     }
 
     private fun placeBlock(
@@ -126,20 +175,14 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         blockPosition: Vector3i,
         itemInHand: ItemData,
         inputPacket: PlayerAuthInputPacket,
-        world: World
+        world: World,
+        blockFace: Int
     ) {
-        val clickPosition = Vector3i.from(blockPosition.x, blockPosition.y + 1, blockPosition.z) // Позиция для размещения
-        val blockIdAtClickPos = world.getBlockIdAt(Vector3i.from(blockPosition.x, blockPosition.y, blockPosition.z)) // Проверяем блок под ногами
+        val clickPosition = blockPosition
+        val blockIdAtClickPos = world.getBlockIdAt(Vector3i.from(blockPosition.x, blockPosition.y - 1, blockPosition.z)) // Блок под позицией
         if (blockIdAtClickPos == 0) {
             if (debugMode) {
-                session.displayClientMessage("Scaffold: No block to click on at $blockPosition")
-            }
-            return
-        }
-
-        if (!isBlockItem(itemInHand)) {
-            if (debugMode) {
-                session.displayClientMessage("Scaffold: Item ${itemInHand.itemDefinition.getRuntimeId()} (e.g., compass) is not a block!")
+                session.displayClientMessage("Scaffold: No block to click on at ${Vector3i.from(blockPosition.x, blockPosition.y - 1, blockPosition.z)}")
             }
             return
         }
@@ -147,20 +190,20 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         // Настройка ItemUseTransaction
         val itemUseTransaction = ItemUseTransaction()
         itemUseTransaction.actionType = 1 // PLACE_BLOCK (проверь перечисление)
-        itemUseTransaction.blockPosition = blockPosition // Позиция блока под ногами
-        itemUseTransaction.blockFace = 1 // UP
-        itemUseTransaction.hotbarSlot = localPlayer.inventory.heldItemSlot // Используем текущий слот
+        itemUseTransaction.blockPosition = Vector3i.from(blockPosition.x, blockPosition.y - 1, blockPosition.z) // Блок для клика
+        itemUseTransaction.blockFace = blockFace // Определённая грань
+        itemUseTransaction.hotbarSlot = localPlayer.inventory.heldItemSlot
         itemUseTransaction.itemInHand = itemInHand
         itemUseTransaction.playerPosition = inputPacket.position
-        itemUseTransaction.clickPosition = Vector3f.from(0.5f, 0f, 0.5f) // Центр клика
+        itemUseTransaction.clickPosition = Vector3f.from(0.5f, 0.5f, 0.5f) // Центр грани
 
         // Настройка InventoryActionData
         val source = InventorySource.fromContainerWindowId(0) // Горячая панель
         val action = InventoryActionData(
             source,
-            localPlayer.inventory.heldItemSlot, // Используем текущий слот
-            itemInHand, // fromItem
-            itemInHand, // toItem (без изменения, пока сервер не подтвердит)
+            localPlayer.inventory.heldItemSlot,
+            itemInHand,
+            itemInHand,
             0 // stackNetworkId
         )
         itemUseTransaction.actions.add(action)
@@ -169,21 +212,20 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         val transactionPacket = InventoryTransactionPacket()
         transactionPacket.transactionType = InventoryTransactionType.ITEM_USE
         transactionPacket.runtimeEntityId = localPlayer.runtimeEntityId
-        transactionPacket.blockPosition = blockPosition
-        transactionPacket.blockFace = 1 // UP
-        transactionPacket.hotbarSlot = localPlayer.inventory.heldItemSlot // Используем текущий слот
+        transactionPacket.blockPosition = Vector3i.from(blockPosition.x, blockPosition.y - 1, blockPosition.z)
+        transactionPacket.blockFace = blockFace
+        transactionPacket.hotbarSlot = localPlayer.inventory.heldItemSlot
         transactionPacket.itemInHand = itemInHand
         transactionPacket.playerPosition = inputPacket.position
-        transactionPacket.clickPosition = Vector3f.from(0.5f, 0f, 0.5f) // Центр блока
+        transactionPacket.clickPosition = Vector3f.from(0.5f, 0.5f, 0.5f) // Центр грани
         transactionPacket.actions.addAll(itemUseTransaction.actions)
 
         // Отправка пакета
         session.serverBound(transactionPacket)
         if (debugMode) {
-            session.displayClientMessage("Scaffold: Sent InventoryTransactionPacket at $clickPosition with item ${itemInHand.itemDefinition.getRuntimeId()}, slot ${localPlayer.inventory.heldItemSlot}")
+            session.displayClientMessage("Scaffold: Sent InventoryTransactionPacket at $clickPosition with item ${itemInHand.itemDefinition.getRuntimeId()} (${itemInHand.itemDefinition.name}), face $blockFace, slot ${localPlayer.inventory.heldItemSlot}")
         }
 
-        // Обновляем кэш инвентаря только после подтверждения (предполагаем)
         world.setBlockIdAt(clickPosition, itemInHand.itemDefinition.getRuntimeId())
     }
 
