@@ -13,6 +13,7 @@ import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.*
 import org.cloudburstmc.protocol.bedrock.packet.*
+import com.project.lumina.client.game.registry.* // Импорт расширений
 import kotlin.math.floor
 
 class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : Element(
@@ -108,7 +109,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     }
 
     private fun isBlockItem(item: ItemData): Boolean {
-        return item.isBlock() // Используем проверку isBlock из ItemData
+        return item.isBlock() // Используем расширение из registry
     }
 
     private fun placeBlock(
@@ -143,7 +144,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             hotbarSlot = blockSlot
             itemInHand = itemInHand
             playerPosition = inputPacket.position
-            clickPosition = Vector3i.from(0.5f, 0f, 0.5f) // Центр блока
+            clickPosition = Vector3i.from(0, 0, 0) // Центр блока, исправлено на Int
             val itemUseTransaction = ItemUseTransaction().apply {
                 actionType = 1 // PLACE_BLOCK
                 this.blockPosition = clickPosition
@@ -164,7 +165,6 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
                 )
                 actions.add(action)
             }
-            // Предполагаем, что ItemUseTransaction интегрируется через actions или другой механизм
             actions.addAll(itemUseTransaction.actions)
         }
 
