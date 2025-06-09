@@ -99,8 +99,6 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
                 if (debugMode) {
                     session.displayClientMessage("Scaffold: Switching from slot $currentSlot to slot $blockSlot")
                 }
-                // Синхронизация (ожидание ответа сервера, если доступно)
-                // Пока полагаемся на следующую итерацию
             } else if (debugMode) {
                 session.displayClientMessage("Scaffold: Already on slot $blockSlot")
             }
@@ -190,10 +188,11 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         world.setBlockIdAt(blockPosition, itemInHand.itemDefinition.getRuntimeId())
     }
 
-    // Обработка ответа сервера (если доступно)
-    override fun afterPacketBound(interceptablePacket: InterceptablePacket) {
-        if (debugMode && interceptablePacket.packet is InventoryTransactionPacket) {
-            session.displayClientMessage("Scaffold: Received response for InventoryTransactionPacket, slot ${session.localPlayer?.inventory?.heldItemSlot}")
+    // Исправленный метод afterPacketBound
+    override fun afterPacketBound(packet: BedrockPacket) {
+        if (debugMode && packet is InventoryTransactionPacket) {
+            val currentSlot = session.localPlayer?.inventory?.heldItemSlot ?: -1
+            session.displayClientMessage("Scaffold: Received response for InventoryTransactionPacket, slot $currentSlot")
         }
     }
 }
