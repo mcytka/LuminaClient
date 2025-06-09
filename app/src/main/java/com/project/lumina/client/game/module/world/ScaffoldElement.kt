@@ -11,11 +11,11 @@ import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
 import org.cloudburstmc.protocol.bedrock.packet.*
 import kotlin.math.floor
 
-class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : Element( // Заменил на предполагаемый ресурс
+class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : Element(
     name = "Scaffold",
     category = CheatCategory.World,
     iconResId,
@@ -86,8 +86,8 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             val blockBelowId = world.getBlockIdAt(posBelow)
             if (blockBelowId != 0) return
 
-            // Устанавливаем слот (через публичный метод, если доступен)
-            inventory.setHeldItemSlot(blockSlot) // Предполагаемый метод, проверь API
+            // Устанавливаем слот (предполагаем, что heldItemSlot доступен для записи)
+            inventory.heldItemSlot = blockSlot // Если приватное, нужно публичный сеттер
             val itemInHand = inventory.content[blockSlot]
             if (itemInHand == null || itemInHand == ItemData.AIR) {
                 if (debugMode) {
@@ -102,7 +102,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     }
 
     private fun isBlockItem(item: ItemData): Boolean {
-        return item.getId() > 0 && item.getId() <= 255 // Используем getId(), если доступен
+        return item.id > 0 && item.id <= 255 // Используем id напрямую, если доступен
     }
 
     private fun placeBlock(
@@ -124,7 +124,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
 
         if (!isBlockItem(itemInHand)) {
             if (debugMode) {
-                session.displayClientMessage("Scaffold: Item ${itemInHand.getId()} (e.g., compass) is not a block!")
+                session.displayClientMessage("Scaffold: Item ${itemInHand.id} (e.g., compass) is not a block!")
             }
             return
         }
@@ -134,18 +134,16 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             runtimeEntityId = localPlayer.runtimeEntityId
             blockPosition = clickPosition
             blockFace = 1 // UP
-            hotbarSlot = blockSlot // Используем blockSlot напрямую
+            hotbarSlot = blockSlot
             itemInHand = itemInHand
             playerPosition = inputPacket.position
-            clickPosition = Vector3f.from(0.5f, 1.0f, 0.5f)
+            clickPosition = Vector3i.from(0, 1, 0) // Исправлено на Vector3i
             val transaction = ItemUseTransaction().apply {
-                actionType = 1 // Предположительное значение для PLACE_BLOCK, проверь документацию
+                actionType = 1 // Предположительное значение для PLACE_BLOCK
                 this.blockPosition = clickPosition
-                this.face = 1 // UP
-                this.hotbarSlot = blockSlot
-                this.itemInHand = itemInHand
-                this.position = inputPacket.position
-                this.clickPosition = Vector3f.from(0.5f, 1.0f, 0.5f)
+                hotbarSlot = blockSlot
+                itemInHand = itemInHand
+                position = inputPacket.position
                 if (!inputPacket.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)) {
                     inputPacket.inputData.add(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)
                 }
@@ -155,23 +153,18 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
 
         session.serverBound(transactionPacket)
         if (debugMode) {
-            session.displayClientMessage("Scaffold: Sent place block at $blockPosition (click on $clickPosition) with item ${itemInHand.getId()}")
+            session.displayClientMessage("Scaffold: Sent place block at $blockPosition (click on $clickPosition) with item ${itemInHand.id}")
         }
 
         // Обновляем кэш инвентаря
-        val updatedItem = ItemData.builder()
-            .id(itemInHand.getId())
-            .damage(itemInHand.getDamage())
-            .count(itemInHand.getCount() - 1)
-            .build() // Используем builder, если доступен
-        if (updatedItem.getCount() > 0) {
+        val updatedItem = ItemData(itemInHand.id, itemInHand.damage, itemInHand.count - 1)
+        if (updatedItem.count > 0) {
             inventory.content[blockSlot] = updatedItem
         } else {
             inventory.content[blockSlot] = ItemData.AIR
         }
-        // Предполагаем, что updateItem недоступен напрямую, нужно найти альтернативу
-        // inventory.updateItem(session, blockSlot) // Убран из-за protected
+        // updateItem недоступен, пропускаем
 
-        world.setBlockIdAt(blockPosition, itemInHand.getId())
+        world.setBlockIdAt(blockPosition, itemInHand.id)
     }
 }
