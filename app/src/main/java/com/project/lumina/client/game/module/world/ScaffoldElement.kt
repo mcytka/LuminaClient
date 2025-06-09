@@ -11,7 +11,7 @@ import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.*
 import org.cloudburstmc.protocol.bedrock.packet.*
 import kotlin.math.floor
 
@@ -108,7 +108,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     }
 
     private fun isBlockItem(item: ItemData): Boolean {
-        return item.getDefinition().getId() > 0 && item.getDefinition().getId() <= 255 // Проверка ID
+        return item.isBlock() // Используем проверку isBlock из ItemData
     }
 
     private fun placeBlock(
@@ -130,7 +130,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
 
         if (!isBlockItem(itemInHand)) {
             if (debugMode) {
-                session.displayClientMessage("Scaffold: Item ${itemInHand.getDefinition().getId()} (e.g., compass) is not a block!")
+                session.displayClientMessage("Scaffold: Item ${itemInHand.itemDefinition.getRuntimeId()} (e.g., compass) is not a block!")
             }
             return
         }
@@ -143,29 +143,38 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             hotbarSlot = blockSlot
             itemInHand = itemInHand
             playerPosition = inputPacket.position
-            clickPosition = Vector3i.from(0, 1, 0) // Исправлено на Vector3i
-            // Настраиваем ItemUseTransaction через actions
-            val action = ItemUseTransaction()
-            action.actionType = 1 // Предполагаемое значение для PLACE_BLOCK
-            action.blockPosition = clickPosition
-            action.hotbarSlot = blockSlot
-            action.itemInHand = itemInHand
-            action.position = inputPacket.position
-            if (!inputPacket.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)) {
-                inputPacket.inputData.add(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)
+            clickPosition = Vector3i.from(0.5f, 0f, 0.5f) // Центр блока
+            val itemUseTransaction = ItemUseTransaction().apply {
+                actionType = 1 // PLACE_BLOCK
+                this.blockPosition = clickPosition
+                this.blockFace = 1 // UP
+                this.hotbarSlot = blockSlot
+                this.itemInHand = itemInHand
+                this.playerPosition = inputPacket.position
+                this.clickPosition = Vector3f.from(0.5f, 0f, 0.5f) // Центр клика
+                val source = InventorySource.fromContainerWindowId(0) // Горячая панель
+                val action = InventoryActionData(
+                    source,
+                    blockSlot,
+                    itemInHand, // fromItem
+                    itemInHand.toBuilder()
+                        .count(itemInHand.getCount() - 1)
+                        .build(), // toItem
+                    0 // stackNetworkId
+                )
+                actions.add(action)
             }
-            actions.add(InventoryActionData()) // Нужно настроить данные действия
+            // Предполагаем, что ItemUseTransaction интегрируется через actions или другой механизм
+            actions.addAll(itemUseTransaction.actions)
         }
 
         session.serverBound(transactionPacket)
         if (debugMode) {
-            session.displayClientMessage("Scaffold: Sent place block at $blockPosition (click on $clickPosition) with item ${itemInHand.getDefinition().getId()}")
+            session.displayClientMessage("Scaffold: Sent place block at $blockPosition (click on $clickPosition) with item ${itemInHand.itemDefinition.getRuntimeId()}")
         }
 
         // Обновляем кэш инвентаря
-        val updatedItem = ItemData.builder()
-            .definition(itemInHand.getDefinition())
-            .damage(itemInHand.getDamage())
+        val updatedItem = itemInHand.toBuilder()
             .count(itemInHand.getCount() - 1)
             .build()
         if (updatedItem.getCount() > 0) {
@@ -175,6 +184,6 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         }
         // updateItem недоступен, пропускаем
 
-        world.setBlockIdAt(blockPosition, itemInHand.getDefinition().getId())
+        world.setBlockIdAt(blockPosition, itemInHand.itemDefinition.getRuntimeId())
     }
 }
