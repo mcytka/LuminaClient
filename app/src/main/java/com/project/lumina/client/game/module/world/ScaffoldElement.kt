@@ -136,37 +136,38 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             return
         }
 
-        val transactionPacket = InventoryTransactionPacket().apply {
-            transactionType = InventoryTransactionType.ITEM_USE
-            runtimeEntityId = localPlayer.runtimeEntityId
-            blockPosition = clickPosition
-            blockFace = 1 // UP
-            hotbarSlot = blockSlot
-            itemInHand = itemInHand
-            playerPosition = inputPacket.position
-            clickPosition = Vector3i.from(0, 0, 0) // Центр блока
-            var itemUseTransaction = ItemUseTransaction().apply {
-                actionType = 1 // PLACE_BLOCK
-                this.blockPosition = clickPosition
-                this.blockFace = 1 // UP
-                this.hotbarSlot = blockSlot
-                this.itemInHand = itemInHand
-                this.playerPosition = inputPacket.position
-                this.clickPosition = Vector3f.from(0.5f, 0f, 0.5f) // Центр клика
-                val source = InventorySource.fromContainerWindowId(0) // Горячая панель
-                val action = InventoryActionData(
-                    source,
-                    blockSlot,
-                    itemInHand, // fromItem
-                    itemInHand.toBuilder()
-                        .count(itemInHand.getCount() - 1)
-                        .build(), // toItem
-                    0 // stackNetworkId
-                )
-                actions.add(action)
-            }
-            actions.addAll(itemUseTransaction.actions)
-        }
+        // Настройка ItemUseTransaction
+        val itemUseTransaction = ItemUseTransaction()
+        itemUseTransaction.actionType = 1 // PLACE_BLOCK
+        itemUseTransaction.blockPosition = clickPosition
+        itemUseTransaction.blockFace = 1 // UP
+        itemUseTransaction.hotbarSlot = blockSlot
+        itemUseTransaction.itemInHand = itemInHand
+        itemUseTransaction.playerPosition = inputPacket.position
+        itemUseTransaction.clickPosition = Vector3f.from(0.5f, 0f, 0.5f) // Центр клика
+
+        // Настройка InventoryActionData
+        val source = InventorySource.fromContainerWindowId(0) // Горячая панель
+        val action = InventoryActionData(
+            source,
+            blockSlot,
+            itemInHand, // fromItem
+            itemInHand.toBuilder().count(itemInHand.getCount() - 1).build(), // toItem
+            0 // stackNetworkId
+        )
+        itemUseTransaction.actions.add(action)
+
+        // Настройка InventoryTransactionPacket
+        val transactionPacket = InventoryTransactionPacket()
+        transactionPacket.transactionType = InventoryTransactionType.ITEM_USE
+        transactionPacket.runtimeEntityId = localPlayer.runtimeEntityId
+        transactionPacket.blockPosition = clickPosition
+        transactionPacket.blockFace = 1 // UP
+        transactionPacket.hotbarSlot = blockSlot
+        transactionPacket.itemInHand = itemInHand
+        transactionPacket.playerPosition = inputPacket.position
+        transactionPacket.clickPosition = Vector3i.from(0, 0, 0) // Центр блока
+        transactionPacket.actions.addAll(itemUseTransaction.actions)
 
         session.serverBound(transactionPacket)
         if (debugMode) {
