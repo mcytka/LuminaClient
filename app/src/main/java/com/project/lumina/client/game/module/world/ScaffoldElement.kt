@@ -4,158 +4,184 @@ import com.project.lumina.client.R
 import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.game.InterceptablePacket
+import com.project.lumina.client.game.entity.LocalPlayer
+import com.project.lumina.client.game.inventory.PlayerInventory
+import com.project.lumina.client.game.world.World
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
-import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryActionData
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventorySource
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
+import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.*
+import org.cloudburstmc.protocol.bedrock.packet.*
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction // Не импортируем ActionType отсюда
-import org.cloudburstmc.protocol.bedrock.packet.InventoryContentPacket
-import org.cloudburstmc.protocol.bedrock.packet.InventorySlotPacket
-import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
-import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
+import kotlin.math.floor
 
-class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : Element(
+class ScaffoldElement(iconResId: Int = R.drawable.ic_block_black_24dp) : Element(
     name = "Scaffold",
     category = CheatCategory.World,
     iconResId,
     displayNameResId = R.string.module_scaffold_display_name
 ) {
 
-    private var lastPlayerPosition: Vector3f = Vector3f.ZERO
-    private var lastPlayerRotation: Vector3f = Vector3f.ZERO // pitch, yaw
-
-    private var isScaffoldActive by boolValue("Scaffold Active", false)
-    // Захардкоженный список предпочитаемых блоков для тестирования
-    private val hardcodedPreferredBlocks = setOf("minecraft:planks", "minecraft:wool", "minecraft:stone", "minecraft:dirt")
-
-    private val playerInventory: MutableMap<Int, ItemData> = mutableMapOf()
-
-    private fun findScaffoldBlock(): ItemData? {
-        val inventoryIndices = playerInventory.keys.sorted()
-
-        // Сначала пытаемся найти захардкоженные предпочитаемые блоки
-        for (slotIndex in inventoryIndices) {
-            val itemData = playerInventory[slotIndex] ?: continue
-
-            if (itemData.count > 0 && itemData.definition != null) {
-                val itemIdentifier = itemData.definition.identifier // e.g., "minecraft:planks"
-                val blockDefinition = session.blockMapping.getDefinition(session.blockMapping.getRuntimeByIdentifier(itemIdentifier))
-
-                if (blockDefinition != null && blockDefinition.identifier != "minecraft:air") {
-                    // Это блок и не воздух
-                    if (hardcodedPreferredBlocks.contains(itemIdentifier)) {
-                        return itemData // Найден предпочитаемый блок
-                    }
-                }
-            }
-        }
-
-        // Если предпочитаемые блоки не найдены, ищем любой пригодный для использования блок
-        for (slotIndex in inventoryIndices) {
-            val itemData = playerInventory[slotIndex] ?: continue
-
-            if (itemData.count > 0 && itemData.definition != null) {
-                val itemIdentifier = itemData.definition.identifier
-                val blockDefinition = session.blockMapping.getDefinition(session.blockMapping.getRuntimeByIdentifier(itemIdentifier))
-
-                if (blockDefinition != null && blockDefinition.identifier != "minecraft:air") {
-                    return itemData // Найден любой пригодный для использования блок
-                }
-            }
-        }
-        return null // Подходящий блок не найден
-    }
+    private val placeDelay by intValue("Place Delay (ms)", 100, 50..500)
+    private val blockSlot by intValue("Block Slot", 0, 0..8)
+    private val debugMode by boolValue("Debug Mode", true)
+    private var lastPlaceTime: Long = 0
 
     override fun onEnabled() {
         super.onEnabled()
+        if (isSessionCreated) {
+            session.displayClientMessage("Scaffold: Enabled")
+        }
     }
 
     override fun onDisabled() {
         super.onDisabled()
+        if (isSessionCreated) {
+            session.displayClientMessage("Scaffold: Disabled")
+        }
     }
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
-        if (!isEnabled) return
+        if (!isSessionCreated) return
 
         val packet = interceptablePacket.packet
+        val localPlayer = session.localPlayer as? LocalPlayer ?: run {
+            if (debugMode) session.displayClientMessage("Scaffold: No local player!")
+            return
+        }
+        val inventory = localPlayer.inventory as? PlayerInventory ?: run {
+            if (debugMode) session.displayClientMessage("Scaffold: No player inventory!")
+            return
+        }
+        val world = session.world as? World ?: run {
+            if (debugMode) session.displayClientMessage("Scaffold: No world instance!")
+            return
+        }
+
+        // 3. Кэширование мира
         when (packet) {
-            is PlayerAuthInputPacket -> {
-                lastPlayerPosition = packet.position
-                lastPlayerRotation = packet.rotation
-
-                // Базовая логика Scaffold: если активен и игрок не на земле, пытаемся разместить блок
-                if (isScaffoldActive && !session.localPlayer.isOnGround) {
-                    val playerFootPos = session.localPlayer.vec3Position
-                    // Целевая позиция блока - один блок ниже ног игрока
-                    val targetBlockPos = Vector3i.from(
-                        playerFootPos.x.toInt(),
-                        playerFootPos.y.toInt() - 1,
-                        playerFootPos.z.toInt()
-                    )
-
-                    // Проверяем, является ли целевая позиция блока воздухом, используя кеш мира
-                    if (session.world.getBlockIdAt(targetBlockPos) == session.blockMapping.airId) {
-                        val blockToPlace = findScaffoldBlock()
-                        if (blockToPlace != null) {
-                            placeBlock(targetBlockPos, blockToPlace)
-                        }
-                    }
+            is LevelChunkPacket -> {
+                if (debugMode) {
+                    session.displayClientMessage("Scaffold: Chunk loaded at ${packet.chunkX}, ${packet.chunkZ}")
                 }
             }
-            is InventoryContentPacket -> {
-                // Обновляем инвентарь игрока полным содержимым
-                playerInventory.clear()
-                packet.contents.forEachIndexed { index, item ->
-                    playerInventory[index] = item
+            is UpdateBlockPacket -> {
+                world.setBlockIdAt(packet.blockPosition, packet.definition.runtimeId)
+                if (debugMode) {
+                    session.displayClientMessage("Scaffold: Block updated at ${packet.blockPosition} to ${packet.definition.runtimeId}")
                 }
             }
-            is InventorySlotPacket -> {
-                // Обновляем конкретный слот инвентаря
-                playerInventory[packet.slot] = packet.item
+        }
+
+        // 1. Инвентарь и 2. Установка блоков
+        if (packet is PlayerAuthInputPacket) {
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastPlaceTime < placeDelay) return
+
+            // Триггер: игрок в воздухе
+            val posBelow = Vector3i.from(
+                floor(packet.position.x).toInt(),
+                floor(packet.position.y).toInt() - 2,
+                floor(packet.position.z).toInt()
+            )
+            val blockBelowId = world.getBlockIdAt(posBelow)
+            if (blockBelowId != 0) return // Не в воздухе
+
+            // Устанавливаем слот
+            inventory.heldItemSlot = blockSlot
+            val itemInHand = inventory.content[blockSlot]
+            if (itemInHand == null || itemInHand == ItemData.AIR) {
+                if (debugMode) {
+                    session.displayClientMessage("Scaffold: No item in slot $blockSlot!")
+                }
+                return
             }
+
+            placeBlock(localPlayer, inventory, posBelow, itemInHand, packet, world)
+            lastPlaceTime = currentTime
         }
     }
 
-    override fun afterPacketBound(packet: org.cloudburstmc.protocol.bedrock.packet.BedrockPacket) {
-        if (!isEnabled) return
-        super.afterPacketBound(packet)
+    private fun isBlockItem(item: ItemData): Boolean {
+        // Упрощённая проверка — можно заменить на список реальных блоков
+        return item.id > 0 && item.id <= 255 // Включает компас (345), но сервер отклонит
     }
 
-    override fun onDisconnect(reason: String) {
-        super.onDisconnect(reason)
-        lastPlayerPosition = Vector3f.ZERO
-        lastPlayerRotation = Vector3f.ZERO
-        playerInventory.clear()
-    }
+    private fun placeBlock(
+        localPlayer: LocalPlayer,
+        inventory: PlayerInventory,
+        blockPosition: Vector3i,
+        itemInHand: ItemData,
+        inputPacket: PlayerAuthInputPacket,
+        world: World
+    ) {
+        val clickPosition = Vector3i.from(blockPosition.x, blockPosition.y - 1, blockPosition.z)
+        val blockIdAtClickPos = world.getBlockIdAt(clickPosition)
+        if (blockIdAtClickPos == 0) {
+            if (debugMode) {
+                session.displayClientMessage("Scaffold: No block to click on at $clickPosition")
+            }
+            return
+        }
 
-    private fun placeBlock(targetPosition: Vector3i, itemToPlace: ItemData) {
-        val transaction = InventoryTransactionPacket().apply {
+        // Проверяем, является ли предмет блоком (для теста оставляем широкую проверку)
+        if (!isBlockItem(itemInHand)) {
+            if (debugMode) {
+                session.displayClientMessage("Scaffold: Item ${itemInHand.id} (e.g., compass) is not a block!")
+            }
+            return
+        }
+
+        // Настраиваем InventoryTransactionPacket
+        val transactionPacket = InventoryTransactionPacket().apply {
             transactionType = InventoryTransactionType.ITEM_USE
-            
-            // Устанавливаем actionType как целочисленное значение. Для PLACE это обычно 0.
-            actionType = 0 // ИСПРАВЛЕНО: Прямое целочисленное значение.
-            blockPosition = targetPosition
-            blockFace = 1 // Лицо UP (положительная ось Y) для размещения на стороне блока ниже
-            hotbarSlot = session.localPlayer.inventory.heldItemSlot
-            itemInHand = session.localPlayer.inventory.hand
-            playerPosition = session.localPlayer.vec3Position
-            headPosition = session.localPlayer.vec3Rotation // Maps to player's head rotation
-            clickPosition = Vector3f.from(0.5f, 0.5f, 0.5f) // Типичная позиция клика по поверхности блока
-
-            // Устанавливаем blockDefinition для пакета транзакции. Получаем его из runtime ID предмета.
-            blockDefinition = session.blockMapping.getDefinition(itemToPlace.definition.runtimeId)
-
-            // Это действие описывает изменение в инвентаре (один предмет потреблен)
-            actions.add(InventoryActionData(
-                InventorySource.fromContainerWindowId(ContainerId.INVENTORY),
-                session.localPlayer.inventory.heldItemSlot,
-                itemToPlace, // fromItem: Предмет до размещения
-                itemToPlace.toBuilder().count(itemToPlace.count - 1).build() // toItem: Предмет после размещения (на одну единицу меньше)
-            ))
+            runtimeEntityId = localPlayer.runtimeEntityId
+            blockPosition = clickPosition
+            blockFace = 1 // UP
+            hotbarSlot = inventory.heldItemSlot
+            itemInHand = itemInHand
+            playerPosition = inputPacket.position
+            clickPosition = Vector3f.from(0.5f, 1.0f, 0.5f)
+            val transaction = ItemUseTransaction().apply {
+                actionType = ItemUseTransaction.ActionType.PLACE_BLOCK
+                this.blockPosition = clickPosition
+                face = 1 // UP
+                hotbarSlot = inventory.heldItemSlot
+                itemInHand = itemInHand
+                position = inputPacket.position
+                clickPosition = Vector3f.from(0.5f, 1.0f, 0.5f)
+                if (!inputPacket.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)) {
+                    inputPacket.inputData.add(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)
+                }
+            }
+            this.transactionData = transaction
         }
-        session.serverBound(transaction)
+
+        session.serverBound(transactionPacket)
+        if (debugMode) {
+            session.displayClientMessage("Scaffold: Sent place block at $blockPosition (click on $clickPosition) with item ${itemInHand.id}")
+        }
+
+        // Обновляем кэш инвентаря (предполагаем успех, сервер откатит при ошибке)
+        val updatedItem = ItemData(itemInHand.id, itemInHand.damage, itemInHand.count - 1)
+        if (updatedItem.count > 0) {
+            inventory.content[blockSlot] = updatedItem
+        } else {
+            inventory.content[blockSlot] = ItemData.AIR
+        }
+        inventory.updateItem(session, blockSlot)
+
+        // Обновляем мир (опционально, сервер должен подтвердить)
+        world.setBlockIdAt(blockPosition, itemInHand.id)
+    }
+
+    override fun afterPacketBound(interceptablePacket: InterceptablePacket) {
+        if (!isEnabled || !isSessionCreated) return
+        if (interceptablePacket.packet is InventoryTransactionPacket) {
+            // Простая проверка отклонения (нужна доработка)
+            if (debugMode) {
+                session.displayClientMessage("Scaffold: Transaction response received")
+            }
+        }
     }
 }
