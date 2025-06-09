@@ -86,8 +86,14 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             val blockBelowId = world.getBlockIdAt(posBelow)
             if (blockBelowId != 0) return
 
-            // Устанавливаем слот (предполагаем, что heldItemSlot доступен для записи)
-            inventory.heldItemSlot = blockSlot // Если приватное, нужно публичный сеттер
+            // Переключаем слот с помощью PlayerHotbarPacket
+            val hotbarPacket = PlayerHotbarPacket().apply {
+                selectedHotbarSlot = blockSlot
+                containerId = 0 // Горячая панель
+                selectHotbarSlot = true
+            }
+            session.serverBound(hotbarPacket)
+
             val itemInHand = inventory.content[blockSlot]
             if (itemInHand == null || itemInHand == ItemData.AIR) {
                 if (debugMode) {
@@ -102,7 +108,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     }
 
     private fun isBlockItem(item: ItemData): Boolean {
-        return item.id > 0 && item.id <= 255 // Используем id напрямую, если доступен
+        return item.getDefinition().getId() > 0 && item.getDefinition().getId() <= 255 // Проверка ID
     }
 
     private fun placeBlock(
@@ -124,7 +130,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
 
         if (!isBlockItem(itemInHand)) {
             if (debugMode) {
-                session.displayClientMessage("Scaffold: Item ${itemInHand.id} (e.g., compass) is not a block!")
+                session.displayClientMessage("Scaffold: Item ${itemInHand.getDefinition().getId()} (e.g., compass) is not a block!")
             }
             return
         }
@@ -138,33 +144,37 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             itemInHand = itemInHand
             playerPosition = inputPacket.position
             clickPosition = Vector3i.from(0, 1, 0) // Исправлено на Vector3i
-            val transaction = ItemUseTransaction().apply {
-                actionType = 1 // Предположительное значение для PLACE_BLOCK
-                this.blockPosition = clickPosition
-                hotbarSlot = blockSlot
-                itemInHand = itemInHand
-                position = inputPacket.position
-                if (!inputPacket.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)) {
-                    inputPacket.inputData.add(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)
-                }
+            // Настраиваем ItemUseTransaction через actions
+            val action = ItemUseTransaction()
+            action.actionType = 1 // Предполагаемое значение для PLACE_BLOCK
+            action.blockPosition = clickPosition
+            action.hotbarSlot = blockSlot
+            action.itemInHand = itemInHand
+            action.position = inputPacket.position
+            if (!inputPacket.inputData.contains(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)) {
+                inputPacket.inputData.add(PlayerAuthInputData.PERFORM_ITEM_INTERACTION)
             }
-            this.transactionData = transaction
+            actions.add(InventoryActionData()) // Нужно настроить данные действия
         }
 
         session.serverBound(transactionPacket)
         if (debugMode) {
-            session.displayClientMessage("Scaffold: Sent place block at $blockPosition (click on $clickPosition) with item ${itemInHand.id}")
+            session.displayClientMessage("Scaffold: Sent place block at $blockPosition (click on $clickPosition) with item ${itemInHand.getDefinition().getId()}")
         }
 
         // Обновляем кэш инвентаря
-        val updatedItem = ItemData(itemInHand.id, itemInHand.damage, itemInHand.count - 1)
-        if (updatedItem.count > 0) {
+        val updatedItem = ItemData.builder()
+            .definition(itemInHand.getDefinition())
+            .damage(itemInHand.getDamage())
+            .count(itemInHand.getCount() - 1)
+            .build()
+        if (updatedItem.getCount() > 0) {
             inventory.content[blockSlot] = updatedItem
         } else {
             inventory.content[blockSlot] = ItemData.AIR
         }
         // updateItem недоступен, пропускаем
 
-        world.setBlockIdAt(blockPosition, itemInHand.id)
+        world.setBlockIdAt(blockPosition, itemInHand.getDefinition().getId())
     }
 }
