@@ -3,21 +3,17 @@ package com.project.lumina.client.game.module.world
 import com.project.lumina.R
 import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.constructors.Element
+import com.project.lumina.client.game.InterceptablePacket
 import com.project.lumina.client.game.registry.isBlock
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction
-import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerHotbarPacket
 import kotlin.math.floor
 
-/**
- * Scaffold - чит для автоматической установки блоков под игроком.
- * Позволяет строить мосты и башни без риска падения.
- */
 class ScaffoldElement : Element(
     name = "Scaffold",
     category = CheatCategory.World,
@@ -32,26 +28,30 @@ class ScaffoldElement : Element(
 
     private var lastPlacementTime = 0L
 
-    override fun beforePacketBound(packet: BedrockPacket, isOutgoing: Boolean): Boolean {
-        return true // Пропускаем пакет для дальнейшей обработки
-    }
+    /**
+     * Перехватываем пакеты, идущие на сервер. Этот метод вызывается только для них,
+     * что идеально подходит для нашей задачи.
+     */
+    override fun beforeServerBound(interceptablePacket: InterceptablePacket) {
+        val packet = interceptablePacket.packet
 
-    override fun onPacketBound(packet: BedrockPacket, isOutgoing: Boolean): Boolean {
         if (!isEnabled || !isSessionCreated) {
-            return true
+            return
         }
 
-        // Мы анализируем и МОДИФИЦИРУЕМ исходящий PlayerAuthInputPacket
-        if (isOutgoing && packet is PlayerAuthInputPacket) {
-            // Если другое действие уже запланировано в этом пакете, мы не вмешиваемся
+        // Нам нужен только PlayerAuthInputPacket
+        if (packet is PlayerAuthInputPacket) {
+            // Если другой модуль уже запланировал действие, не вмешиваемся
             if (packet.itemUseTransaction == null) {
                 handleScaffoldLogic(packet)
             }
         }
-
-        return true
     }
 
+    /**
+     * Основная логика чита. Вызывается из beforeServerBound.
+     * Эта функция осталась без изменений, так как внутренняя логика была верной.
+     */
     private fun handleScaffoldLogic(packet: PlayerAuthInputPacket) {
         if (System.currentTimeMillis() - lastPlacementTime < delay) {
             return
@@ -84,9 +84,7 @@ class ScaffoldElement : Element(
                 containerId = 0
                 selectHotbarSlot = true
             })
-            // После отправки пакета на смену хотбара, лучше подождать следующего тика,
-            // чтобы сервер успел обработать смену, и наше следующее действие было с правильным предметом.
-            return
+            return // Ждем следующего тика, чтобы сервер обработал смену хотбара
         }
 
         val itemInHand = inventory.content[inventory.heldItemSlot]
@@ -98,7 +96,6 @@ class ScaffoldElement : Element(
             packet.rotation = Vector3f.from(82f, packet.rotation.y, packet.rotation.z)
         }
 
-        // Создаем транзакцию и встраиваем ее в исходящий пакет движения
         val transaction = ItemUseTransaction().apply {
             actionType = 1 // CLICK_BLOCK
             blockPosition = anchor.pos
@@ -115,7 +112,6 @@ class ScaffoldElement : Element(
 
         lastPlacementTime = System.currentTimeMillis()
 
-        // Локально обновляем инвентарь для предотвращения рассинхронизации
         if (itemInHand.count > 1) {
             inventory.content[inventory.heldItemSlot] = itemInHand.toBuilder().count(itemInHand.count - 1).build()
         } else {
