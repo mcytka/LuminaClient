@@ -1,215 +1,136 @@
-package com.project.lumina.client.game.module.world // Правильный пакет
+package com.project.lumina.client.game.module.world
 
-import android.util.Log
-import com.project.lumina.client.R
-import com.project.lumina.client.game.InterceptablePacket
+import com.project.lumina.client.constructors.CheatCategory
+import com.project.lumina.client.constructors.Element
+import com.project.lumina.client.constructors.NetBound
 import com.project.lumina.client.game.entity.LocalPlayer
 import com.project.lumina.client.game.inventory.PlayerInventory
+import com.project.lumina.client.game.world.World
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
-import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
-import org.cloudburstmc.protocol.bedrock.packet.PlayerHotbarPacket
-import org.cloudburstmc.protocol.bedrock.packet.InventoryContentPacket
-import org.cloudburstmc.protocol.bedrock.packet.InventorySlotPacket
 import kotlin.math.floor
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 class ScaffoldElement : Element(
     name = "Scaffold",
     category = CheatCategory.World,
-    iconResId = R.drawable.ic_cube_outline_black_24dp,
-    defaultEnabled = false,
-    displayNameResId = null
+    iconResId = com.project.lumina.client.R.drawable.ic_cube_outline_black_24dp,
+    defaultEnabled = false
 ) {
-    // Конфигурационные параметры
-    private val placeDelay by intValue("PlaceDelay", 2, 0..10)
-    private val lookDownAngle by floatValue("LookDownAngle", 75.0f, 0.0f..90.0f)
-    private val lookaheadTime by floatValue("LookaheadTime", 0.1f, 0.0f..0.5f)
 
-    // Внутреннее состояние
+    private lateinit var session: NetBound
     private lateinit var player: LocalPlayer
+    private lateinit var world: World
     private lateinit var inventory: PlayerInventory
-    private var lastPlaceTick = 0L
-    private var selectedBlockSlot: Int? = null
+
+    private var lastPlaceTime = 0L
+    private val placeDelay = 100L // milliseconds between block placements
 
     override fun onEnabled() {
         super.onEnabled()
-        if (isSessionInitialized()) {
-            player = getLocalPlayer()
-            inventory = player.inventory
-        }
+        if (!isSessionCreated) return
+        player = session.localPlayer
+        world = session.world
+        inventory = player.inventory
+        lastPlaceTime = 0L
     }
-
-    override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
-        if (!isEnabled || !isSessionInitialized()) return
-
-        val packet = interceptablePacket.packet
-        when (packet) {
-            is PlayerAuthInputPacket -> handlePlayerAuthInput(packet)
-            is InventoryTransactionPacket -> handleInventoryTransaction(packet)
-        }
-    }
-
-    // Заменяем afterPacketBound на handleReceivedPacket из-за ошибки с переопределением
-    fun handleReceivedPacket(packet: Any) {
-        if (!isEnabled || !isSessionInitialized()) return
-
-        when (packet) {
-            is InventoryContentPacket -> updateInventory(packet)
-            is InventorySlotPacket -> updateInventorySlot(packet)
-        }
-    }
-
-    private fun updateInventory(packet: InventoryContentPacket) {
-        if (packet.containerId == 0) {
-            inventory.setContent(packet.contents)
-            updateSelectedBlock()
-        }
-    }
-
-    private fun updateInventorySlot(packet: InventorySlotPacket) {
-        if (packet.containerId == 0) {
-            inventory.setSlot(packet.slot, packet.item)
-            updateSelectedBlock()
-        }
-    }
-
-    private fun updateSelectedBlock() {
-        selectedBlockSlot = inventory.searchForItemInHotbar { item ->
-            item.blockRuntimeId != 0 && item.count > 0 // Проверка на блок
-        }
-        selectedBlockSlot?.let { slot ->
-            if (inventory.getSelectedSlot() != slot) {
-                val hotbarPacket = PlayerHotbarPacket().apply {
-                    selectedHotbarSlot = slot
-                    containerId = 0
-                    selectHotbarSlot = true
-                }
-                sendServerBound(hotbarPacket)
-                inventory.selectSlot(slot) // Предполагаем публичный метод
-            }
-        }
-    }
-
-    private fun handlePlayerAuthInput(packet: PlayerAuthInputPacket) {
-        if (lastPlaceTick + placeDelay > packet.tick) return
-
-        val playerPos = packet.position
-        val velocity = packet.delta
-        val rotation = packet.rotation
-
-        val isMoving = velocity.x != 0f || velocity.z != 0f
-        val isOnGround = player.isOnGround
-        if (!isMoving || isOnGround) return
-
-        val isTowering = packet.inputData.contains(PlayerAuthInputData.JUMPING) && rotation.x > 45.0f
-        val targetPos = calculateTargetPosition(playerPos, velocity, isTowering)
-
-        if (isBlockEmpty(targetPos)) {
-            placeBlock(packet, targetPos, isTowering)
-            lastPlaceTick = packet.tick
-        }
-    }
-
-    private fun calculateTargetPosition(playerPos: Vector3f, velocity: Vector3f, isTowering: Boolean): Vector3i {
-        val predictedPos = if (!isTowering) {
-            Vector3f.from(
-                playerPos.x + velocity.x * lookaheadTime,
-                playerPos.y - 1.0f,
-                playerPos.z + velocity.z * lookaheadTime
-            )
-        } else {
-            Vector3f.from(playerPos.x, playerPos.y - 1.0f, playerPos.z)
-        }
-
-        return Vector3i.from(
-            floor(predictedPos.x).toInt(),
-            floor(predictedPos.y).toInt(),
-            floor(predictedPos.z).toInt()
-        )
-    }
-
-    private fun isBlockEmpty(pos: Vector3i): Boolean {
-        val blockId = getWorld().getBlockRuntimeId(pos) // Предполагаем публичный метод
-        return blockId == 0
-    }
-
-    private fun placeBlock(authPacket: PlayerAuthInputPacket, targetPos: Vector3i, isTowering: Boolean) {
-        selectedBlockSlot?.let { slot ->
-            val item = inventory.getSlot(slot)
-            if (item.blockRuntimeId == 0 || item.count == 0) return
-
-            val blockFace = if (isTowering) {
-                1 // Верхняя грань
-            } else {
-                val yaw = authPacket.rotation.y
-                when {
-                    yaw in 45.0f..135.0f -> 2 // North
-                    yaw in 135.0f..225.0f -> 4 // West
-                    yaw in 225.0f..315.0f -> 3 // South
-                    else -> 5 // East
-                }
-            }
-
-            val transaction = ItemUseTransaction().apply {
-                actionType = 2 // CLICK_BLOCK
-                blockPosition = targetPos
-                this.blockFace = blockFace
-                hotbarSlot = slot
-                itemInHand = item
-                playerPosition = authPacket.position
-                clickPosition = Vector3f.from(0.5f, 0.5f, 0.5f)
-            }
-
-            val transactionPacket = InventoryTransactionPacket().apply {
-                transactionType = InventoryTransactionType.ITEM_USE
-                setTransactionData(transaction)
-            }
-
-            val modifiedAuthPacket = authPacket.clone().apply {
-                rotation = Vector3f.from(lookDownAngle, rotation.y, rotation.z)
-            }
-
-            sendServerBound(modifiedAuthPacket)
-            sendServerBound(transactionPacket)
-
-            inventory.decrementSlot(slot) // Предполагаем публичный метод
-        }
-    }
-
-    private fun handleInventoryTransaction(packet: InventoryTransactionPacket) {
-        if (packet.transactionType == InventoryTransactionType.ITEM_USE &&
-            packet.getTransactionData()?.clientInteractPrediction == ItemUseTransaction.PredictedResult.FAILURE
-        ) {
-            selectedBlockSlot?.let { slot ->
-                inventory.incrementSlot(slot) // Предполагаем публичный метод
-            }
-        }
-    }
-
-    // Вспомогательные методы для обхода ограничений доступа
-    private fun isSessionInitialized(): Boolean {
-        return try {
-            getSession()
-            true
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun sendServerBound(packet: Any) {
-        getSession().serverBound(packet)
-    }
-
-    private fun getWorld() = getSession().world
-
-    private fun getLocalPlayer() = getSession().localPlayer
 
     override fun onDisabled() {
         super.onDisabled()
-        selectedBlockSlot = null
+    }
+
+    override fun beforePacketBound(interceptablePacket: com.project.lumina.client.game.InterceptablePacket) {
+        val packet = interceptablePacket.packet
+        if (packet is PlayerAuthInputPacket) {
+            handlePlayerInput(packet)
+        }
+    }
+
+    private fun handlePlayerInput(packet: PlayerAuthInputPacket) {
+        val pos = packet.position
+        val motion = packet.motion
+        val onGround = player.isOnGround
+
+        if (shouldPlaceBlock(pos, motion, onGround)) {
+            val targetPos = calculateTargetPosition(pos, motion)
+            val blockFace = selectBlockFace(targetPos, pos)
+            val blockSlot = selectBlockFromInventory()
+
+            if (blockSlot != null && canPlaceBlock()) {
+                placeBlock(targetPos, blockFace, blockSlot)
+            }
+        }
+    }
+
+    private fun shouldPlaceBlock(position: Vector3f, motion: Vector3f, onGround: Boolean): Boolean {
+        val blockBelowPos = Vector3i.from(
+            floor(position.x).toInt(),
+            floor(position.y - 1).toInt(),
+            floor(position.z).toInt()
+        )
+        val blockIdBelow = world.getBlockIdAt(blockBelowPos)
+        val isAirBelow = blockIdBelow == 0
+
+        val horizontalSpeed = sqrt(motion.x * motion.x + motion.z * motion.z)
+        return horizontalSpeed > 0.1f && isAirBelow && !onGround
+    }
+
+    private fun calculateTargetPosition(position: Vector3f, motion: Vector3f): Vector3i {
+        val lookaheadTime = 0.2f
+        val predictedX = position.x + motion.x * lookaheadTime
+        val predictedY = position.y - 1.5f // account for eye height offset
+        val predictedZ = position.z + motion.z * lookaheadTime
+        return Vector3i.from(floor(predictedX).toInt(), floor(predictedY).toInt(), floor(predictedZ).toInt())
+    }
+
+    private fun selectBlockFace(targetPos: Vector3i, playerPos: Vector3f): Int {
+        val dx = playerPos.x - targetPos.x
+        val dz = playerPos.z - targetPos.z
+
+        // Faces: 0=bottom,1=top,2=north,3=south,4=west,5=east
+        return when {
+            abs(dx) > abs(dz) -> if (dx > 0) 4 else 5
+            else -> if (dz > 0) 2 else 3
+        }
+    }
+
+    private fun selectBlockFromInventory(): Int? {
+        return inventory.searchForItemInHotbar { it.isBlock() }
+    }
+
+    private fun canPlaceBlock(): Boolean {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastPlaceTime < placeDelay) {
+            return false
+        }
+        lastPlaceTime = currentTime
+        return true
+    }
+
+    private fun placeBlock(targetPos: Vector3i, blockFace: Int, blockSlot: Int) {
+        val packet = InventoryTransactionPacket().apply {
+            transactionType = InventoryTransactionType.ITEM_USE
+            actionType = 0 // CLICK_BLOCK
+            blockPosition = targetPos
+            this.blockFace = blockFace
+            hotbarSlot = blockSlot
+            itemInHand = inventory.content[blockSlot]
+            playerPosition = player.vec3Position
+            clickPosition = Vector3f(0.5f, 0.5f, 0.5f)
+            runtimeEntityId = player.runtimeEntityId
+        }
+        session.serverBound(packet)
+    }
+
+    override fun fromJson(jsonElement: kotlinx.serialization.json.JsonElement) {
+        super.fromJson(jsonElement)
+    }
+
+    override fun toJson(): kotlinx.serialization.json.JsonElement {
+        return super.toJson()
     }
 }
