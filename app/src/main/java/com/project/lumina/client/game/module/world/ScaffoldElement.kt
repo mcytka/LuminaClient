@@ -24,7 +24,7 @@ class ScaffoldElement : Element(
     category = CheatCategory.World,
     iconResId = R.drawable.ic_cube_outline_black_24dp,
     defaultEnabled = false,
-    displayNameResId = R.string.scaffold // TODO: Fix unresolved reference 'scaffold' later
+    displayNameResId = null // TODO: Fix unresolved reference 'scaffold' later
 ) {
     private lateinit var world: World
     private lateinit var playerInventory: PlayerInventory
@@ -117,7 +117,7 @@ class ScaffoldElement : Element(
 
     private fun selectBlockFromInventory(): Int? {
         return playerInventory.searchForItemInHotbar { item ->
-            item.blockDefinition != null && item.count > 0
+            item.blockDefinition != null && item.getCount() > 0
         }
     }
 
@@ -158,10 +158,20 @@ class ScaffoldElement : Element(
     }
 
     private fun updateInventoryAfterPlace(slot: Int, item: ItemData) {
-        val newCount = item.count - 1
+        val newCount = item.getCount() - 1
         val newItem = if (newCount > 0) {
-            // Manually create new ItemData using constructor
-            ItemData.of(item.id, item.damage, newCount, item.tag, item.blockDefinition)
+            ItemData.builder()
+                .definition(item.getDefinition())
+                .damage(item.getDamage())
+                .count(newCount)
+                .tag(item.getTag())
+                .canPlace(*item.getCanPlace())
+                .canBreak(*item.getCanBreak())
+                .blockingTicks(item.getBlockingTicks())
+                .blockDefinition(item.getBlockDefinition())
+                .usingNetId(item.isUsingNetId())
+                .netId(item.getNetId())
+                .build()
         } else {
             ItemData.AIR
         }
@@ -184,8 +194,18 @@ class ScaffoldElement : Element(
                 val newItem = if (currentItem == ItemData.AIR) {
                     item
                 } else {
-                    // Restore item count on failure
-                    ItemData.of(currentItem.id, currentItem.damage, currentItem.count + 1, currentItem.tag, currentItem.blockDefinition)
+                    ItemData.builder()
+                        .definition(currentItem.getDefinition())
+                        .damage(currentItem.getDamage())
+                        .count(currentItem.getCount() + 1)
+                        .tag(currentItem.getTag())
+                        .canPlace(*currentItem.getCanPlace())
+                        .canBreak(*currentItem.getCanBreak())
+                        .blockingTicks(currentItem.getBlockingTicks())
+                        .blockDefinition(currentItem.getBlockDefinition())
+                        .usingNetId(currentItem.isUsingNetId())
+                        .netId(currentItem.getNetId())
+                        .build()
                 }
                 playerInventory.content[slot] = newItem
 
