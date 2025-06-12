@@ -1,6 +1,6 @@
 package com.project.lumina.client.game.module.world
 
-import com.project.lumina.R
+import com.project.lumina.client.R // Исправленный путь импорта
 import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.game.InterceptablePacket
@@ -29,8 +29,8 @@ class ScaffoldElement : Element(
     private var lastPlacementTime = 0L
 
     /**
-     * Перехватываем пакеты, идущие на сервер. Этот метод вызывается только для них,
-     * что идеально подходит для нашей задачи.
+     * Перехватываем пакеты, идущие на сервер.
+     * Здесь будет вся наша логика.
      */
     override fun beforeServerBound(interceptablePacket: InterceptablePacket) {
         val packet = interceptablePacket.packet
@@ -39,9 +39,7 @@ class ScaffoldElement : Element(
             return
         }
 
-        // Нам нужен только PlayerAuthInputPacket
         if (packet is PlayerAuthInputPacket) {
-            // Если другой модуль уже запланировал действие, не вмешиваемся
             if (packet.itemUseTransaction == null) {
                 handleScaffoldLogic(packet)
             }
@@ -49,9 +47,14 @@ class ScaffoldElement : Element(
     }
 
     /**
-     * Основная логика чита. Вызывается из beforeServerBound.
-     * Эта функция осталась без изменений, так как внутренняя логика была верной.
+     * Обязательная реализация абстрактного метода из интерфейса.
+     * Мы оставляем его пустым, так как вся наша логика находится в
+     * более специфичном методе beforeServerBound.
      */
+    override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
+        // Не удаляйте этот метод! Он нужен для компиляции.
+    }
+
     private fun handleScaffoldLogic(packet: PlayerAuthInputPacket) {
         if (System.currentTimeMillis() - lastPlacementTime < delay) {
             return
@@ -84,7 +87,7 @@ class ScaffoldElement : Element(
                 containerId = 0
                 selectHotbarSlot = true
             })
-            return // Ждем следующего тика, чтобы сервер обработал смену хотбара
+            return
         }
 
         val itemInHand = inventory.content[inventory.heldItemSlot]
@@ -97,7 +100,7 @@ class ScaffoldElement : Element(
         }
 
         val transaction = ItemUseTransaction().apply {
-            actionType = 1 // CLICK_BLOCK
+            actionType = 1
             blockPosition = anchor.pos
             blockFace = anchor.face
             hotbarSlot = inventory.heldItemSlot
