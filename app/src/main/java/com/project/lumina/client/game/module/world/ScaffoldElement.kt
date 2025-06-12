@@ -11,13 +11,12 @@ import com.project.lumina.client.game.world.World
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryActionData
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventorySource
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction
+import org.cloudburstmc.protocol.bedrock.packet.InventorySlotPacket
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerHotbarPacket
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
 import kotlin.math.floor
 
 class ScaffoldElement : Element(
@@ -25,7 +24,7 @@ class ScaffoldElement : Element(
     category = CheatCategory.World,
     iconResId = R.drawable.ic_cube_outline_black_24dp,
     defaultEnabled = false,
-    displayNameResId = R.string.scaffold
+    displayNameResId = R.string.scaffold // Ensure this exists in res/values/strings.xml
 ) {
     private lateinit var world: World
     private lateinit var playerInventory: PlayerInventory
@@ -44,6 +43,13 @@ class ScaffoldElement : Element(
             world = session.world
             playerInventory = session.localPlayer.inventory
             blockMapping = session.blockMapping
+        }
+    }
+
+    override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
+        // Delegate to beforeServerBound for server-bound packets
+        if (interceptablePacket.packet is PlayerAuthInputPacket) {
+            beforeServerBound(interceptablePacket)
         }
     }
 
@@ -138,15 +144,12 @@ class ScaffoldElement : Element(
     }
 
     private fun switchToHotbarSlot(slot: Int) {
-        if (playerInventory.heldItemSlot != slot) {
-            val hotbarPacket = PlayerHotbarPacket().apply {
-                selectedHotbarSlot = slot
-                containerId = 0
-                selectHotbarSlot = true
-            }
-            session.serverBound(hotbarPacket)
-            playerInventory.heldItemSlot = slot
+        val hotbarPacket = PlayerHotbarPacket().apply {
+            selectedHotbarSlot = slot
+            containerId = 0
+            selectHotbarSlot = true
         }
+        session.serverBound(hotbarPacket)
     }
 
     private fun adjustHeadRotation(packet: PlayerAuthInputPacket) {
@@ -163,7 +166,7 @@ class ScaffoldElement : Element(
         val transactionPacket = InventoryTransactionPacket().apply {
             transactionType = InventoryTransactionType.ITEM_USE
             actionType = 0 // CLICK_BLOCK
-            this.blockPosition = pos
+            blockPosition = pos
             blockFace = 1 // UP (ставим на верхнюю грань блока ниже)
             hotbarSlot = slot
             this.itemInHand = itemInHand
@@ -189,31 +192,45 @@ class ScaffoldElement : Element(
         // Уменьшение количества блоков в инвентаре
         val newCount = item.count - 1
         val newItem = if (newCount > 0) {
-            item.toBuilder().count(newCount).build()
+            ItemData(item.id, item.damage, newCount, item.nbt, item.blockDefinition)
         } else {
             ItemData.AIR
         }
         playerInventory.content[slot] = newItem
-        playerInventory.updateItem(session, slot)
+
+        // Отправка пакета для обновления слота
+        val slotPacket = InventorySlotPacket().apply {
+            containerId = 0
+            this.slot = slot
+            this.item = newItem
+        }
+        session.clientBound(slotPacket)
     }
 
     override fun afterClientBound(packet: org.cloudburstmc.protocol.bedrock.packet.BedrockPacket) {
         // Обработка отклонённых транзакций
         if (packet is InventoryTransactionPacket && packet.transactionType == InventoryTransactionType.ITEM_USE) {
-            if (packet.itemUseTransaction?.clientInteractPrediction == ItemUseTransaction.PredictedResult.FAILURE) {
+            val transactionData = packet as? ItemUseTransaction
+            if (transactionData?.clientInteractPrediction == ItemUseTransaction.PredictedResult.FAILURE) {
                 // Откат изменений в инвентаре при отклонении
                 val slot = packet.hotbarSlot
                 val item = packet.itemInHand
                 if (item != null && item != ItemData.AIR) {
                     val currentItem = playerInventory.content[slot]
-                    if (currentItem == ItemData.AIR) {
-                        playerInventory.content[slot] = item
+                    val newItem = if (currentItem == ItemData.AIR) {
+                        item
                     } else {
-                        playerInventory.content[slot] = currentItem.toBuilder()
-                            .count(currentItem.count + 1)
-                            .build()
+                        ItemData(currentItem.id, currentItem.damage, currentItem.count + 1, currentItem.nbt, currentItem.blockDefinition)
                     }
-                    playerInventory.updateItem(session, slot)
+                    playerInventory.content[slot] = newItem
+
+                    // Отправка пакета для обновления слота
+                    val slotPacket = InventorySlotPacket().apply {
+                        containerId = 0
+                        this.slot = slot
+                        this.item = newItem
+                    }
+                    session.clientBound(slotPacket)
                 }
             }
         }
