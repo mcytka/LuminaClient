@@ -30,10 +30,9 @@ class ScaffoldElement : Element(
     private lateinit var playerInventory: PlayerInventory
     private lateinit var blockMapping: BlockMapping
     private var lastBlockPlaceTime = 0L
-    private val placeDelay = 100L // Задержка между установками блоков (в миллисекундах)
-    private val lookaheadTime = 0.1f // Время предсказания для быстрого движения
+    private val placeDelay = 100L
+    private val lookaheadTime = 0.1f
 
-    // Настройки чита
     private val towerMode by boolValue("TowerMode", false)
     private val placeRate by intValue("PlaceRate", 100, 50..500)
 
@@ -161,7 +160,8 @@ class ScaffoldElement : Element(
     private fun updateInventoryAfterPlace(slot: Int, item: ItemData) {
         val newCount = item.count - 1
         val newItem = if (newCount > 0) {
-            ItemData.of(item.getId(), item.getDamage(), newCount, item.getTag())
+            // Create new ItemData by copying properties
+            playerInventory.content[slot].copy(count = newCount)
         } else {
             ItemData.AIR
         }
@@ -177,7 +177,6 @@ class ScaffoldElement : Element(
 
     override fun afterClientBound(packet: org.cloudburstmc.protocol.bedrock.packet.BedrockPacket) {
         if (packet is InventoryTransactionPacket && packet.transactionType == InventoryTransactionType.ITEM_USE) {
-            // Simplified: Assume failure if block placement isn't confirmed (no clientInteractPrediction)
             val slot = packet.hotbarSlot
             val item = packet.itemInHand
             if (item != null && item != ItemData.AIR && packet.actionType == 0) {
@@ -185,7 +184,8 @@ class ScaffoldElement : Element(
                 val newItem = if (currentItem == ItemData.AIR) {
                     item
                 } else {
-                    ItemData.of(currentItem.getId(), currentItem.getDamage(), currentItem.count + 1, currentItem.getTag())
+                    // Restore item count on failure
+                    currentItem.copy(count = currentItem.count + 1)
                 }
                 playerInventory.content[slot] = newItem
 
