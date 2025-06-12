@@ -160,8 +160,8 @@ class ScaffoldElement : Element(
     private fun updateInventoryAfterPlace(slot: Int, item: ItemData) {
         val newCount = item.count - 1
         val newItem = if (newCount > 0) {
-            // Create new ItemData by copying properties
-            playerInventory.content[slot].copy(count = newCount)
+            // Manually create new ItemData using constructor
+            ItemData.of(item.id, item.damage, newCount, item.tag, item.blockDefinition)
         } else {
             ItemData.AIR
         }
@@ -185,7 +185,7 @@ class ScaffoldElement : Element(
                     item
                 } else {
                     // Restore item count on failure
-                    currentItem.copy(count = currentItem.count + 1)
+                    ItemData.of(currentItem.id, currentItem.damage, currentItem.count + 1, currentItem.tag, currentItem.blockDefinition)
                 }
                 playerInventory.content[slot] = newItem
 
