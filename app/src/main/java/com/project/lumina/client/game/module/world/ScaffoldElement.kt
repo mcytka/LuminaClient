@@ -1,291 +1,235 @@
-package com.project.lumina.client.game.module.world
+package com.project.lumina.client.elements.world
 
 import com.project.lumina.R
 import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.constructors.Element
-import com.project.lumina.client.game.InterceptablePacket
-import com.project.lumina.client.game.entity.LocalPlayer
-import com.project.lumina.client.game.inventory.PlayerInventory
-import com.project.lumina.client.game.world.World
-// Исправленные импорты для intValue и boolValue
-import com.project.lumina.client.constructors.intValue
-import com.project.lumina.client.constructors.boolValue
+import com.project.lumina.client.game.registry.isBlock
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
-import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.*
-import org.cloudburstmc.protocol.bedrock.packet.*
-import com.project.lumina.client.game.registry.* // Импорт расширений, например isBlock()
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction
+import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket
+import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
+import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
+import org.cloudburstmc.protocol.bedrock.packet.PlayerHotbarPacket
 import kotlin.math.floor
-import kotlin.random.Random // Для legacyRequestId, если еще используется
 
-class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : Element(
+/**
+ * Scaffold - чит для автоматической установки блоков под игроком.
+ * Позволяет строить мосты и башни без риска падения.
+ *
+ * Реализация основана на перехвате и отправке пакетов через MITM-слой.
+ */
+class ScaffoldElement : Element(
     name = "Scaffold",
     category = CheatCategory.World,
-    iconResId,
-    displayNameResId = R.string.module_scaffold_display_name
+    iconResId = R.drawable.ic_cube_outline_black_24dp, // Иконка, которая точно есть в проекте
+    defaultEnabled = false
 ) {
 
-    private val placeDelay by intValue("Place Delay (ms)", 100, 50..500)
-    private val blockSlot by intValue("Block Slot", 0, 0..8) // Используем для выбора слота, если useAnyBlock = false
-    private val useAnyBlock by boolValue("Use Any Block", true) // Опция: использовать любой блок в инвентаре
-    private val debugMode by boolValue("Debug Mode", true)
-    private var lastPlaceTime: Long = 0
-    private var lastRequestId: Long = 0L // Используем для requestId
-    private var originalHotbarSlot: Int = -1 // Для восстановления слота
+    // --- Настройки (Values) для UI ---
+    private val tower by boolValue("Tower", true)
+    private val rotate by boolValue("Rotate", true)
+    private val prediction by floatValue("Prediction", 0.25f, 0f..2f)
+    private val delay by intValue("Delay", 50, 0..500)
 
-    override fun onEnabled() {
-        super.onEnabled()
-        if (isSessionCreated) {
-            session.displayClientMessage("Scaffold: Enabled")
+    // Переменная для ограничения скорости установки блоков
+    private var lastPlacementTime = 0L
+
+    /**
+     * Основной метод обработки пакетов. Вызывается для каждого пакета.
+     */
+    override fun onPacket(packet: BedrockPacket, isOutgoing: Boolean): Boolean {
+        // Чит работает только если включен и сессия активна
+        if (!isEnabled || !isSessionCreated) {
+            return true
         }
-        originalHotbarSlot = -1 // Сбрасываем при включении
+
+        // Мы анализируем исходящий PlayerAuthInputPacket, так как он содержит актуальные данные
+        // о движении и вводе игрока, что идеально подходит для триггера.
+        if (isOutgoing && packet is PlayerAuthInputPacket) {
+            handleScaffoldLogic(packet)
+        }
+
+        return true // Всегда пропускаем пакет дальше
     }
 
-    override fun onDisabled() {
-        super.onDisabled()
-        if (isSessionCreated) {
-            session.displayClientMessage("Scaffold: Disabled")
+    /**
+     * Центральная логика Scaffold.
+     */
+    private fun handleScaffoldLogic(packet: PlayerAuthInputPacket) {
+        // --- Этап 4: Ограничение скорости (Rate Limiting) ---
+        if (System.currentTimeMillis() - lastPlacementTime < delay.value) {
+            return
         }
-        // Возвращаем на исходный слот, если он был изменен и сессия активна
-        if (isSessionCreated && originalHotbarSlot != -1) {
-            session.localPlayer?.inventory?.setHeldItemSlot(originalHotbarSlot) // Используем сеттер
-            session.serverBound(PlayerHotbarPacket().apply {
-                selectedHotbarSlot = originalHotbarSlot
-                containerId = ContainerId.INVENTORY // Горячая панель
+
+        val player = session.localPlayer
+        val world = session.world
+
+        // --- Этап 2: Предиктивный расчет позиции ---
+        // Рассчитываем позицию на опережение, используя вектор скорости из пакета.
+        val predictedPos = player.vec3Position.add(packet.delta.mul(prediction.value))
+
+        // Определяем, находится ли игрок в режиме строительства башни (Tower).
+        val isJumping = packet.inputData.contains(PlayerAuthInputData.JUMPING)
+        val isMovingHorizontally = packet.motion.x != 0f || packet.motion.y != 0f // motion в PAIP - это (x, z)
+
+        val targetPos = if (tower.value && isJumping && !isMovingHorizontally) {
+            // Режим Tower: строимся вверх. Целевая позиция - прямо под ногами.
+            Vector3i.from(floor(player.posX).toInt(), floor(player.posY - 1).toInt(), floor(player.posZ).toInt())
+        } else {
+            // Режим Bridge/Normal: используем предсказанную позицию.
+            Vector3i.from(floor(predictedPos.x).toInt(), floor(predictedPos.y - 1).toInt(), floor(predictedPos.z).toInt())
+        }
+
+        // --- Этап 2: Разработка триггера ---
+        // Проверяем, пуст ли блок в целевой позиции. Если нет, ничего не делаем.
+        val blockAtTarget = world.getBlockIdAt(targetPos)
+        if (blockAtTarget != session.blockMapping.airId) {
+            return
+        }
+
+        // --- Этап 2: Выбор блока ---
+        val blockToPlace = findBestBlock() ?: return // В инвентаре нет подходящих блоков
+
+        // Ищем опорный блок, на который будем "кликать" для установки нового.
+        val anchor = findAnchorBlock(targetPos) ?: return // Не найдено точки опоры
+
+        // --- Этап 3: Имитация действий игрока ---
+
+        // Переключаем хотбар, если выбранный блок не в руке
+        val inventory = player.inventory
+        if (inventory.heldItemSlot != blockToPlace.slot && blockToPlace.slot in 0..8) {
+            val hotbarPacket = PlayerHotbarPacket().apply {
+                selectedHotbarSlot = blockToPlace.slot
+                containerId = 0 // Инвентарь игрока
                 selectHotbarSlot = true
-            })
-            if (debugMode) session.displayClientMessage("Scaffold: Returned to original slot $originalHotbarSlot")
-            originalHotbarSlot = -1 // Сбрасываем после возврата
-        }
-    }
-
-    override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
-        if (!isEnabled || !isSessionCreated) return // Проверяем isEnabled
-
-        val packet = interceptablePacket.packet
-        val localPlayer = session.localPlayer as? LocalPlayer ?: run {
-            if (debugMode) session.displayClientMessage("Scaffold: No local player!")
-            return
-        }
-        val inventory = localPlayer.inventory as? PlayerInventory ?: run {
-            if (debugMode) session.displayClientMessage("Scaffold: No player inventory!")
-            return
-        }
-        val world = session.world as? World ?: run {
-            if (debugMode) session.displayClientMessage("Scaffold: No world instance!")
-            return
-        }
-
-        // Кэширование мира: это хорошая практика
-        when (packet) {
-            is LevelChunkPacket -> {
-                // Если есть возможность, можно вызвать метод обновления чанка в world
-                // world.loadChunk(packet.chunkX, packet.chunkZ, packet.payload) // Пример
-                if (debugMode) {
-                    session.displayClientMessage("Scaffold: Chunk loaded at ${packet.chunkX}, ${packet.chunkZ}")
-                }
             }
-            is UpdateBlockPacket -> {
-                world.setBlockIdAt(packet.blockPosition, packet.definition.runtimeId)
-                if (debugMode) {
-                    session.displayClientMessage("Scaffold: Block updated at ${packet.blockPosition} to ${packet.definition.runtimeId}")
-                }
+            session.serverBound(hotbarPacket)
+            // Немедленно обновляем локальное состояние, чтобы следующий пакет был корректным
+            // В `PlayerInventory` эта логика уже может быть, но для надежности дублируем.
+            try {
+                val field = inventory::class.java.getDeclaredField("heldItemSlot")
+                field.isAccessible = true
+                field.setInt(inventory, blockToPlace.slot)
+            } catch (e: Exception) {
+                // Обработка ошибки, если рефлексия не удалась
             }
         }
 
-        if (packet is PlayerAuthInputPacket) {
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastPlaceTime < placeDelay) return
-
-            // Позиция, куда мы хотим установить блок (прямо под игроком)
-            val targetBlockPos = Vector3i.from(
-                floor(packet.position.x).toInt(),
-                floor(packet.position.y - 1).toInt(), // Один блок под игроком
-                floor(packet.position.z).toInt()
-            )
-
-            // Проверяем, есть ли уже блок на целевой позиции
-            val blockAtTargetId = world.getBlockIdAt(targetBlockPos)
-            if (blockAtTargetId != 0) {
-                if (debugMode) {
-                    session.displayClientMessage("Scaffold: Block already at $targetBlockPos (ID: $blockAtTargetId), skipping placement.")
-                }
-                return // Не ставим блок, если он уже есть
-            }
-
-            // Находим подходящий блок в инвентаре
-            val blockInInventorySlot = findBlockInInventory(inventory)
-            if (blockInInventorySlot == -1) {
-                if (debugMode) session.displayClientMessage("Scaffold: No suitable block found in inventory!")
-                return
-            }
-            val itemToPlace = inventory.content[blockInInventorySlot]
-
-            // Сохраняем исходный слот при первой смене
-            if (originalHotbarSlot == -1) {
-                originalHotbarSlot = localPlayer.inventory.getHeldItemSlot() // Используем геттер
-            }
-
-            // Переключаемся на слот с блоком, если текущий слот не совпадает
-            if (localPlayer.inventory.getHeldItemSlot() != blockInInventorySlot) { // Используем геттер
-                localPlayer.inventory.setHeldItemSlot(blockInInventorySlot) // Используем сеттер
-                session.serverBound(PlayerHotbarPacket().apply {
-                    selectedHotbarSlot = blockInInventorySlot
-                    containerId = ContainerId.INVENTORY // Горячая панель
-                    selectHotbarSlot = true
-                })
-                if (debugMode) session.displayClientMessage("Scaffold: Switched to slot $blockInInventorySlot")
-            }
-
-            // Позиция блока, на который мы "кликаем", чтобы установить наш блок.
-            // Если ставим на Y-1, то кликаем на блок на Y-2.
-            val clickBlockPosition = Vector3i.from(
-                targetBlockPos.x,
-                targetBlockPos.y - 1, // Блок на один ниже целевого
-                targetBlockPos.z
-            )
-            // Грань, на которую мы кликаем (вверх)
-            val clickBlockFace = 1 // 1 = UP
-
-            // Проверяем, есть ли вообще блок, на который можно кликнуть
-            val blockAtClickPosId = world.getBlockIdAt(clickBlockPosition)
-            if (blockAtClickPosId == 0) {
-                if (debugMode) session.displayClientMessage("Scaffold: No block to click on at $clickBlockPosition (needed for placement)")
-                return // Нет опоры для установки блока
-            }
-
-
-            placeBlock(
-                localPlayer,
-                inventory,
-                targetBlockPos, // Позиция, куда ставим блок
-                clickBlockPosition, // Позиция, на которую кликаем
-                clickBlockFace, // Грань, на которую кликаем
-                itemToPlace,
-                packet,
-                world
-            )
-            lastPlaceTime = currentTime
-        }
-    }
-
-    // Ищет блок в инвентаре. Приоритет: горячая панель, затем весь инвентарь (если useAnyBlock).
-    private fun findBlockInInventory(inventory: PlayerInventory): Int {
-        val currentHotbarSlot = inventory.getHeldItemSlot() // Используем геттер
-
-        // 1. Проверяем текущий горячий слот, если он уже является блоком
-        val currentItem = inventory.content[currentHotbarSlot]
-        if (currentItem != null && currentItem != ItemData.AIR && isBlockItem(currentItem)) {
-            return currentHotbarSlot
+        // Убедимся, что в руке действительно тот предмет, который мы собираемся ставить
+        val itemInHand = inventory.content[inventory.heldItemSlot]
+        if (!itemInHand.isBlock() || isNonScaffoldBlock(itemInHand)) {
+            return // После переключения слота в руке оказался не блок. Отмена.
         }
 
-        // 2. Если не текущий, ищем в настроенном blockSlot (если useAnyBlock = false)
-        if (!useAnyBlock) {
-            val itemInConfiguredSlot = inventory.content[blockSlot]
-            if (itemInConfiguredSlot != null && itemInConfiguredSlot != ItemData.AIR && isBlockItem(itemInConfiguredSlot)) {
-                return blockSlot
-            }
+        // --- Этап 4: Имитация поворота головы ---
+        if (rotate.value) {
+            // Модифицируем текущий пакет PlayerAuthInputPacket, чтобы имитировать взгляд вниз.
+            // Это помогает обходить некоторые анти-читы.
+            packet.rotation = packet.rotation.toBuilder().x(82f).y(packet.rotation.y).z(packet.rotation.z).build()
         }
 
-        // 3. Ищем в горячей панели (слоты 0-8)
-        for (i in 0..8) {
-            val item = inventory.content[i]
-            if (item != null && item != ItemData.AIR && isBlockItem(item)) {
-                return i
-            }
-        }
-
-        // 4. Если useAnyBlock включено, ищем во всем остальном инвентаре
-        if (useAnyBlock) {
-            for (i in 9 until inventory.content.size) { // Начиная с 9-го слота (инвентарь)
-                val item = inventory.content[i]
-                if (item != null && item != ItemData.AIR && isBlockItem(item)) {
-                    return i
-                }
-            }
-        }
-        return -1 // Блок не найден
-    }
-
-    private fun isBlockItem(item: ItemData): Boolean {
-        // Предполагаем, что item.isBlock() правильно реализован в com.project.lumina.client.game.registry.*
-        // Если для булыжника (ID 1) isBlock() возвращает false, это указывает на проблему в вашей реализации isBlock().
-        // Можно добавить здесь логику для "форсирования" известных блоков, если isBlock() не идеален.
-        // Пример: if (item.itemDefinition.runtimeId == 1) return true // Булыжник
-        return item.isBlock()
-    }
-
-    private fun placeBlock(
-        localPlayer: LocalPlayer,
-        inventory: PlayerInventory,
-        targetBlockPosition: Vector3i, // Место, куда устанавливаем блок
-        clickBlockPosition: Vector3i, // Место, куда кликаем
-        clickBlockFace: Int, // Грань, на которую кликаем
-        itemInHand: ItemData,
-        inputPacket: PlayerAuthInputPacket,
-        world: World
-    ) {
-        // Увеличиваем requestId и используем его
-        lastRequestId++
-
+        // --- Этап 3: Создание InventoryTransactionPacket ---
         val transaction = ItemUseTransaction().apply {
-            actionType = 1 // PLACE_BLOCK
-            blockPosition = clickBlockPosition
-            blockFace = clickBlockFace
-            hotbarSlot = localPlayer.inventory.getHeldItemSlot() // Используем геттер
-            itemInHand = itemInHand
-            playerPosition = inputPacket.position
-            clickPosition = Vector3f.from(0.5f, 0.5f, 0.5f) // Центр грани блока
-            blockDefinition = itemInHand.itemDefinition as? org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition
-                ?: throw IllegalStateException("Item ${itemInHand.itemDefinition.identifier} is not a valid block definition!")
-            // requestId и legacyRequestId устанавливаются на уровне InventoryTransaction (родитель ItemUseTransaction)
-            requestId = lastRequestId
-            legacyRequestId = Random.nextInt() // Генерируем новый legacyRequestId
+            actionType = 1 // 1 = CLICK_BLOCK (Использование предмета на блоке)
+            blockPosition = anchor.pos // Позиция опорного блока
+            blockFace = anchor.face // Грань опорного блока, на которую кликаем
+            hotbarSlot = inventory.heldItemSlot
+            this.itemInHand = itemInHand
+            playerPosition = player.vec3Position
+            clickPosition = Vector3f.from(0.5, 0.5, 0.5) // Условная точка клика в центре грани
+            blockDefinition = session.blockMapping.getDefinition(itemInHand.blockDefinition.runtimeId)
         }
 
-        // Создаем InventoryTransactionPacket, передавая ItemUseTransaction как поле 'transaction'
         val transactionPacket = InventoryTransactionPacket().apply {
             transactionType = InventoryTransactionType.ITEM_USE
-            runtimeEntityId = localPlayer.runtimeEntityId
-            // Само поле транзакции
-            this.transaction = transaction
-
-            // Действия инвентаря
-            actions.add(
-                InventoryActionData(
-                    InventorySource.fromContainerWindowId(ContainerId.INVENTORY), // Источник: инвентарь
-                    localPlayer.inventory.getHeldItemSlot(), // Слот, из которого берется предмет
-                    itemInHand, // Предмет до изменения
-                    itemInHand.toBuilder().count(itemInHand.count - 1).build() // Предмет после изменения (количество уменьшено)
-                )
-            )
+            itemUseTransaction = transaction
+            legacyRequestId = 0
+            isUsingNetIds = false
         }
 
+        // Отправляем сформированный пакет на сервер от имени клиента
         session.serverBound(transactionPacket)
-        if (debugMode) {
-            session.displayClientMessage("Scaffold: Sent InventoryTransactionPacket for ${targetBlockPosition} with item ${itemInHand.itemDefinition.identifier}, slot ${localPlayer.inventory.getHeldItemSlot()}, requestId ${transaction.requestId}, legacyRequestId ${transaction.legacyRequestId}")
-        }
 
-        // Обновляем локальное состояние мира и инвентаря
-        world.setBlockIdAt(targetBlockPosition, itemInHand.itemDefinition.runtimeId)
-        val updatedItem = itemInHand.toBuilder().count(itemInHand.count - 1).build()
-        if (updatedItem.count > 0) { // Используем .count, а не .getCount()
-            inventory.content[localPlayer.inventory.getHeldItemSlot()] = updatedItem
+        // Обновляем время последней установки
+        lastPlacementTime = System.currentTimeMillis()
+
+        // --- Превентивное обновление инвентаря ---
+        // Чтобы избежать рассинхронизации, можно уменьшить количество блоков в локальном
+        // представлении инвентаря, не дожидаясь ответа от сервера.
+        if (itemInHand.count > 1) {
+            inventory.content[inventory.heldItemSlot] = itemInHand.toBuilder().count(itemInHand.count - 1).build()
         } else {
-            inventory.content[localPlayer.inventory.getHeldItemSlot()] = ItemData.AIR
+            inventory.content[inventory.heldItemSlot] = ItemData.AIR
         }
     }
 
-    override fun afterPacketBound(packet: BedrockPacket) {
-        if (debugMode && packet is InventoryTransactionPacket) {
-            val currentSlot = session.localPlayer?.inventory?.getHeldItemSlot() ?: -1 // Используем геттер
-            val receivedRequestId = packet.transaction?.requestId ?: -1L // Доступ через transaction
-            val receivedLegacyRequestId = packet.transaction?.legacyRequestId ?: -1 // Доступ через transaction
-
-            session.displayClientMessage("Scaffold: Received response for InventoryTransactionPacket, slot $currentSlot, requestId $receivedRequestId, legacyRequestId $receivedLegacyRequestId, packet: ${packet.toString().take(50)}...")
+    /**
+     * Ищет лучший блок для установки в инвентаре.
+     * Приоритет у хотбара.
+     */
+    private fun findBestBlock(): BlockPlacementData? {
+        val inventory = session.localPlayer.inventory
+        // Сначала ищем в хотбаре (0-8), затем в остальном инвентаре (9-35)
+        for (i in 0 until 36) {
+            val item = inventory.content[i]
+            if (item.isBlock() && !isNonScaffoldBlock(item)) {
+                return BlockPlacementData(i, item)
+            }
         }
+        return null
     }
+
+    /**
+     * Проверяет, является ли блок "нежелательным" для строительства (сундуки, печки и т.д.).
+     */
+    private fun isNonScaffoldBlock(item: ItemData): Boolean {
+        val identifier = item.definition.identifier
+        return identifier.contains("chest") ||
+                identifier.contains("shulker_box") ||
+                identifier.contains("furnace") ||
+                identifier.contains("crafting_table") ||
+                identifier.contains("bed") ||
+                identifier.contains("door") ||
+                identifier.contains("gate")
+    }
+
+    /**
+     * Находит опорный блок и грань для клика, чтобы разместить новый блок в `targetPos`.
+     */
+    private fun findAnchorBlock(targetPos: Vector3i): AnchorResult? {
+        val world = session.world
+        // Грани блока: 0:Y-, 1:Y+, 2:Z-, 3:Z+, 4:X-, 5:X+
+        // Нам нужно найти соседний с targetPos блок, чтобы "кликнуть" по нему.
+
+        // 1. Самый простой случай: ставим блок на блок снизу.
+        val belowPos = targetPos.sub(0, 1, 0)
+        if (world.getBlockIdAt(belowPos) != session.blockMapping.airId) {
+            return AnchorResult(belowPos, 1) // Кликаем на верхнюю грань (1) блока под целью.
+        }
+
+        // 2. Случай моста (bridging): ищем опору по сторонам.
+        val neighbors = listOf(
+            targetPos.add(0, 0, 1) to 2,  // Южный сосед -> клик по северной грани (2)
+            targetPos.add(0, 0, -1) to 3, // Северный сосед -> клик по южной грани (3)
+            targetPos.add(1, 0, 0) to 4,   // Восточный сосед -> клик по западной грани (4)
+            targetPos.add(-1, 0, 0) to 5,  // Западный сосед -> клик по восточной грани (5)
+            targetPos.add(0, 1, 0) to 0 // Верхний сосед -> клик по нижней грани (0), редкий случай
+        )
+
+        for ((pos, face) in neighbors) {
+            if (world.getBlockIdAt(pos) != session.blockMapping.airId) {
+                return AnchorResult(pos, face)
+            }
+        }
+
+        return null // Опора не найдена
+    }
+
+    // Вспомогательные классы для хранения данных
+    private data class BlockPlacementData(val slot: Int, val item: ItemData)
+    private data class AnchorResult(val pos: Vector3i, val face: Int)
 }
