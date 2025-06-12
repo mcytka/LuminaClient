@@ -1,306 +1,241 @@
-package com.project.lumina.client.game.module.world
+package com.project.lumina.client.constructors
 
+import android.util.Log
 import com.project.lumina.client.R
-import com.project.lumina.client.constructors.CheatCategory
-import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.game.InterceptablePacket
 import com.project.lumina.client.game.entity.LocalPlayer
+import com.project.lumina.client.game.inventory.ItemData
 import com.project.lumina.client.game.inventory.PlayerInventory
+import com.project.lumina.client.game.registry.BlockDefinition
 import com.project.lumina.client.game.world.World
-import com.project.lumina.client.game.registry.*
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
-import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventorySource
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
-import org.cloudburstmc.protocol.bedrock.packet.*
-import kotlin.math.cos
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction
+import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
+import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
+import org.cloudburstmc.protocol.bedrock.packet.PlayerHotbarPacket
 import kotlin.math.floor
-import kotlin.math.sin
-import kotlin.random.Random
 
-class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : Element(
+class ScaffoldElement : Element(
     name = "Scaffold",
     category = CheatCategory.World,
-    iconResId,
-    displayNameResId = R.string.module_scaffold_display_name
+    iconResId = R.drawable.ic_cube_outline_black_24dp,
+    defaultEnabled = false
 ) {
-    private val placeDelay by intValue("Place Delay (ms)", 150, 50..500)
-    private val blockSlot by intValue("Block Slot", 0, 0..8)
-    private val debugMode by boolValue("Debug Mode", true)
-    private val towerMode by boolValue("Tower Mode", false)
-    private var lastPlaceTime: Long = 0
+    // Конфигурационные параметры
+    private val placeDelay by intValue("PlaceDelay", 2, 0..10) // Задержка между установками блоков (в тиках)
+    private val lookDownAngle by floatValue("LookDownAngle", 75.0f, 0.0f..90.0f) // Угол взгляда вниз для имитации
+    private val lookaheadTime by floatValue("LookaheadTime", 0.1f, 0.0f..0.5f) // Время предсказания для быстрого движения
+
+    // Внутреннее состояние
+    private lateinit var world: World
+    private lateinit var player: LocalPlayer
+    private lateinit var inventory: PlayerInventory
+    private var lastPlaceTick = 0L
+    private val blockCache = mutableMapOf<Vector3i, Int>() // Кэш блоков мира
+    private var selectedBlockSlot: Int? = null
 
     override fun onEnabled() {
         super.onEnabled()
-        if (isSessionCreated) {
-            if (debugMode) session.displayClientMessage("Scaffold: Enabled, towerMode=$towerMode")
+        if (::session.isInitialized) {
+            world = session.world
+            player = session.localPlayer
+            inventory = player.inventory
+        }
+    }
+
+    override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
+        if (!isEnabled || !::session.isInitialized) return
+
+        val packet = interceptablePacket.packet
+        when (packet) {
+            is PlayerAuthInputPacket -> handlePlayerAuthInput(packet)
+            is InventoryTransactionPacket -> handleInventoryTransaction(packet)
+        }
+    }
+
+    override fun afterPacketBound(packet: BedrockPacket) {
+        if (!isEnabled || !::session.isInitialized) return
+
+        when (packet) {
+            is InventoryContentPacket -> updateInventory(packet)
+            is InventorySlotPacket -> updateInventorySlot(packet)
+            is UpdateBlockPacket -> updateBlockCache(packet.blockPosition, packet.definition.runtimeId)
+        }
+    }
+
+    private fun updateInventory(packet: InventoryContentPacket) {
+        if (packet.containerId == 0) { // Основной инвентарь
+            inventory.content.indices.forEach { slot ->
+                inventory.content[slot] = packet.contents.getOrNull(slot) ?: ItemData.AIR
+            }
+            updateSelectedBlock()
+        }
+    }
+
+    private fun updateInventorySlot(packet: InventorySlotPacket) {
+        if (packet.containerId == 0) {
+            inventory.content[packet.slot] = packet.item
+            updateSelectedBlock()
+        }
+    }
+
+    private fun updateBlockCache(position: Vector3i, runtimeId: Int) {
+        blockCache[position] = runtimeId
+    }
+
+    private fun updateSelectedBlock() {
+        // Ищем подходящий блок в хотбаре
+        selectedBlockSlot = inventory.searchForItemInHotbar { item ->
+            item.isBlock() && item.count > 0
+        }
+        // Если блок найден, выбираем его в хотбаре
+        selectedBlockSlot?.let { slot ->
+            if (inventory.heldItemSlot != slot) {
+                val hotbarPacket = PlayerHotbarPacket().apply {
+                    selectedHotbarSlot = slot
+                    containerId = 0
+                    selectHotbarSlot = true
+                }
+                session.serverBound(hotbarPacket)
+                inventory.heldItemSlot = slot
+            }
+        }
+    }
+
+    private fun handlePlayerAuthInput(packet: PlayerAuthInputPacket) {
+        if (lastPlaceTick + placeDelay > packet.tick) return // Ограничение скорости установки
+
+        val playerPos = packet.position
+        val velocity = packet.delta
+        val rotation = packet.rotation
+
+        // Проверяем, находится ли игрок в воздухе и движется ли горизонтально
+        val isMoving = velocity.x != 0f || velocity.z != 0f
+        val isOnGround = player.isOnGround
+        if (!isMoving || isOnGround) return
+
+        // Определяем режим (Bridging или Towering)
+        val isTowering = packet.inputData.contains(PlayerAuthInputData.JUMPING) && rotation.x > 45.0f
+        val targetPos = calculateTargetPosition(playerPos, velocity, isTowering)
+
+        // Проверяем, пуст ли целевой блок
+        if (isBlockEmpty(targetPos)) {
+            placeBlock(packet, targetPos, isTowering)
+            lastPlaceTick = packet.tick
+        }
+    }
+
+    private fun calculateTargetPosition(playerPos: Vector3f, velocity: Vector3f, isTowering: Boolean): Vector3i {
+        val predictedPos = if (!isTowering) {
+            // Для Bridging: предсказываем позицию с учетом скорости
+            Vector3f.from(
+                playerPos.x + velocity.x * lookaheadTime,
+                playerPos.y - 1.0f, // Под ногами игрока
+                playerPos.z + velocity.z * lookaheadTime
+            )
+        } else {
+            // Для Towering: ставим блок прямо под игроком
+            Vector3f.from(playerPos.x, playerPos.y - 1.0f, playerPos.z)
+        }
+
+        return Vector3i.from(
+            floor(predictedPos.x).toInt(),
+            floor(predictedPos.y).toInt(),
+            floor(predictedPos.z).toInt()
+        )
+    }
+
+    private fun isBlockEmpty(pos: Vector3i): Boolean {
+        val blockId = blockCache[pos] ?: world.getBlockIdAt(pos)
+        return blockId == 0 // 0 = воздух
+    }
+
+    private fun placeBlock(authPacket: PlayerAuthInputPacket, targetPos: Vector3i, isTowering: Boolean) {
+        selectedBlockSlot?.let { slot ->
+            val item = inventory.content[slot]
+            if (!item.isBlock() || item.count == 0) return
+
+            // Определяем грань блока для клика
+            val blockFace = if (isTowering) {
+                1 // Верхняя грань для Towering
+            } else {
+                // Для Bridging выбираем грань в зависимости от направления движения
+                val yaw = authPacket.rotation.y
+                when {
+                    yaw in 45.0f..135.0f -> 2 // North
+                    yaw in 135.0f..225.0f -> 4 // West
+                    yaw in 225.0f..315.0f -> 3 // South
+                    else -> 5 // East
+                }
+            }
+
+            // Формируем пакет для установки блока
+            val transaction = ItemUseTransaction().apply {
+                actionType = 2 // CLICK_BLOCK
+                blockPosition = targetPos
+                this.blockFace = blockFace
+                hotbarSlot = slot
+                itemInHand = item
+                playerPosition = authPacket.position
+                clickPosition = Vector3f.from(0.5f, 0.5f, 0.5f) // Центр блока
+                blockDefinition = item.blockDefinition
+                clientInteractPrediction = ItemUseTransaction.PredictedResult.SUCCESS
+                triggerType = ItemUseTransaction.TriggerType.PLAYER_INPUT
+            }
+
+            val transactionPacket = InventoryTransactionPacket().apply {
+                transactionType = InventoryTransactionType.ITEM_USE
+                itemUseTransaction = transaction
+            }
+
+            // Имитация взгляда вниз
+            val modifiedAuthPacket = authPacket.clone().apply {
+                rotation = Vector3f.from(lookDownAngle, rotation.y, rotation.z)
+            }
+
+            // Отправляем пакеты
+            session.serverBound(modifiedAuthPacket)
+            session.serverBound(transactionPacket)
+
+            // Обновляем инвентарь локально
+            if (item.count == 1) {
+                inventory.content[slot] = ItemData.AIR
+            } else {
+                inventory.content[slot] = item.toBuilder().count(item.count - 1).build()
+            }
+            inventory.notifySlotUpdate(session, slot)
+        }
+    }
+
+    private fun handleInventoryTransaction(packet: InventoryTransactionPacket) {
+        // Проверяем ответ сервера на нашу транзакцию
+        if (packet.transactionType == InventoryTransactionType.ITEM_USE &&
+            packet.itemUseTransaction?.clientInteractPrediction == ItemUseTransaction.PredictedResult.FAILURE
+        ) {
+            // Откатываем изменения в инвентаре
+            selectedBlockSlot?.let { slot ->
+                val item = inventory.content[slot]
+                if (item == ItemData.AIR) {
+                    inventory.content[slot] = item.toBuilder().count(1).build()
+                } else {
+                    inventory.content[slot] = item.toBuilder().count(item.count + 1).build()
+                }
+                inventory.notifySlotUpdate(session, slot)
+            }
+            // Удаляем блок из кэша, если он не был установлен
+            packet.itemUseTransaction?.blockPosition?.let { pos ->
+                blockCache.remove(pos)
+            }
         }
     }
 
     override fun onDisabled() {
         super.onDisabled()
-        if (isSessionCreated) {
-            if (debugMode) session.displayClientMessage("Scaffold: Disabled")
-        }
-    }
-
-    override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
-        if (!isEnabled || !isSessionCreated) {
-            if (debugMode) session.displayClientMessage("Scaffold: Not active - isEnabled=$isEnabled, isSessionCreated=$isSessionCreated")
-            return
-        }
-
-        val packet = interceptablePacket.packet
-        val localPlayer = session.localPlayer as? LocalPlayer ?: run {
-            if (debugMode) session.displayClientMessage("Scaffold: No local player!")
-            return
-        }
-        val inventory = localPlayer.inventory as? PlayerInventory ?: run {
-            if (debugMode) session.displayClientMessage("Scaffold: No player inventory!")
-            return
-        }
-        val world = session.world as? World ?: run {
-            if (debugMode) session.displayClientMessage("Scaffold: No world instance!")
-            return
-        }
-
-        // Обработка чанков и блоков
-        when (packet) {
-            is LevelChunkPacket -> {
-                if (debugMode) session.displayClientMessage("Scaffold: Chunk loaded at ${packet.chunkX}, ${packet.chunkZ}")
-            }
-            is UpdateBlockPacket -> {
-                world.setBlockIdAt(packet.blockPosition, packet.definition.runtimeId)
-                if (debugMode) session.displayClientMessage("Scaffold: Block updated at ${packet.blockPosition} to ${packet.definition.runtimeId}")
-            }
-        }
-
-        // Размещение блоков
-        if (packet is PlayerAuthInputPacket) {
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastPlaceTime < placeDelay + Random.nextLong(0, 50)) {
-                if (debugMode) session.displayClientMessage("Scaffold: Place delay not met: ${currentTime - lastPlaceTime}ms")
-                return
-            }
-
-            // Проверка движения или прыжка
-            val velocity = packet.delta
-            val isMoving = velocity.x != 0f || velocity.z != 0f
-            val isJumping = packet.inputData.contains(PlayerAuthInputData.JUMPING)
-            val pitch = packet.rotation.x
-            if (!towerMode && !isMoving) {
-                if (debugMode) session.displayClientMessage("Scaffold: Player not moving")
-                return
-            }
-            if (towerMode && (!isJumping || pitch > -30f)) {
-                if (debugMode) session.displayClientMessage("Scaffold: Tower mode inactive - jumping=$isJumping, pitch=$pitch")
-                return
-            }
-
-            // Проверка предмета
-            val itemInHand = inventory.content[blockSlot]
-            if (itemInHand == null || itemInHand == ItemData.AIR || !isBlockItem(itemInHand)) {
-                if (debugMode) session.displayClientMessage("Scaffold: Invalid item in slot $blockSlot: $itemInHand")
-                return
-            }
-
-            // Вычисление целевой позиции
-            val targetPos = if (towerMode) {
-                calculateToweringPosition(packet)
-            } else {
-                calculateBridgingPosition(packet)
-            }
-            if (targetPos == null) {
-                if (debugMode) session.displayClientMessage("Scaffold: No valid target position")
-                return
-            }
-
-            // Проверка чанка
-            val chunkX = targetPos.x shr 4
-            val chunkZ = targetPos.z shr 4
-            if (!world.isChunkLoaded(chunkX, chunkZ)) {
-                if (debugMode) session.displayClientMessage("Scaffold: Chunk not loaded at $chunkX, $chunkZ")
-                return
-            }
-
-            // Проверка, что целевая позиция свободна
-            if (world.getBlockIdAt(targetPos) != 0) {
-                if (debugMode) session.displayClientMessage("Scaffold: Target position $targetPos is not air")
-                return
-            }
-
-            // Переключение слота
-            val hotbarPacket = PlayerHotbarPacket().apply {
-                selectedHotbarSlot = blockSlot
-                containerId = 0
-                selectHotbarSlot = true
-            }
-            session.serverBound(hotbarPacket)
-            if (debugMode) session.displayClientMessage("Scaffold: Switched to slot $blockSlot")
-
-            placeBlock(localPlayer, inventory, targetPos, itemInHand, packet, world)
-            lastPlaceTime = currentTime
-        }
-    }
-
-    private fun isBlockItem(item: ItemData): Boolean {
-        val isBlock = item.isBlock()
-        if (debugMode) session.displayClientMessage("Scaffold: Item ${item.getDefinition()} isBlock=$isBlock")
-        return isBlock
-    }
-
-    private fun calculateBridgingPosition(packet: PlayerAuthInputPacket): Vector3i? {
-        val yaw = packet.rotation.y.toDouble() * (Math.PI / 180)
-        val eyePos = packet.position
-        val feetY = eyePos.y - 1.5f
-        val minDistance = 1.5 // Начинаем с 1.5 блока для надежности
-        val maxDistance = 2.5
-        val direction = Vector3f.from(-sin(yaw), 0.0f, cos(yaw)).normalize()
-
-        for (dist in minDistance..maxDistance step 0.5) {
-            val checkPos = eyePos.add(direction.mul(dist.toFloat()))
-            val blockPos = Vector3i.from(
-                floor(checkPos.x).toInt(),
-                floor(feetY).toInt(),
-                floor(checkPos.z).toInt()
-            )
-            val world = session.world as? World ?: return null
-            if (world.getBlockIdAt(blockPos) == 0) {
-                if (debugMode) session.displayClientMessage("Scaffold: Bridging target position $blockPos at distance $dist")
-                return blockPos
-            }
-        }
-        return null
-    }
-
-    private fun calculateToweringPosition(packet: PlayerAuthInputPacket): Vector3i {
-        val position = packet.position
-        return Vector3i.from(
-            floor(position.x).toInt(),
-            floor(position.y - 2).toInt(), // Позиция размещения
-            floor(position.z).toInt()
-        )
-    }
-
-    private fun calculateBlockFace(yaw: Float, isTowering: Boolean): Int {
-        if (isTowering) return 1 // Вверх для Towering
-        val normalizedYaw = (yaw % 360 + 360) % 360
-        return when {
-            normalizedYaw >= 45 && normalizedYaw < 135 -> 4 // Запад (-X)
-            normalizedYaw >= 135 && normalizedYaw < 225 -> 2 // Север (-Z)
-            normalizedYaw >= 225 && normalizedYaw < 315 -> 5 // Восток (+X)
-            else -> 3 // Юг (+Z)
-        }
-    }
-
-    private fun getClickPosition(face: Int, blockPos: Vector3i): Vector3f {
-        return when (face) {
-            1 -> Vector3f.from(0.5f, 1.0f, 0.5f) // Вверх
-            2 -> Vector3f.from(0.5f, 0.5f, 0.0f) // Север
-            3 -> Vector3f.from(0.5f, 0.5f, 1.0f) // Юг
-            4 -> Vector3f.from(0.0f, 0.5f, 0.5f) // Запад
-            5 -> Vector3f.from(1.0f, 0.5f, 0.5f) // Восток
-            else -> Vector3f.from(0.5f, 0.5f, 0.5f)
-        }.add(Random.nextFloat() * 0.2f - 0.1f, Random.nextFloat() * 0.2f - 0.1f, Random.nextFloat() * 0.2f - 0.1f)
-    }
-
-    private fun placeBlock(
-        localPlayer: LocalPlayer,
-        inventory: PlayerInventory,
-        blockPosition: Vector3i,
-        itemInHand: ItemData,
-        inputPacket: PlayerAuthInputPacket,
-        world: World
-    ) {
-        val yaw = inputPacket.rotation.y
-        val blockFace = calculateBlockFace(yaw, towerMode)
-        // Соседний блок для клика
-        val clickPosition = if (towerMode) {
-            // Для Towering кликаем по блоку на y - 3
-            Vector3i.from(blockPosition.x, blockPosition.y - 1, blockPosition.z)
-        } else {
-            // Для Bridging кликаем по блоку за целевой позицией
-            when (blockFace) {
-                2 -> Vector3i.from(blockPosition.x, blockPosition.y, blockPosition.z + 1) // Север
-                3 -> Vector3i.from(blockPosition.x, blockPosition.y, blockPosition.z - 1) // Юг
-                4 -> Vector3i.from(blockPosition.x + 1, blockPosition.y, blockPosition.z) // Запад
-                5 -> Vector3i.from(blockPosition.x - 1, blockPosition.y, blockPosition.z) // Восток
-                else -> return
-            }
-        }
-
-        // Проверка, что кликаем по существующему блоку
-        if (world.getBlockIdAt(clickPosition) == 0) {
-            if (debugMode) session.displayClientMessage("Scaffold: No block to click on at $clickPosition")
-            return
-        }
-
-        // Настройка пакета
-        val transactionPacket = InventoryTransactionPacket().apply {
-            transactionType = InventoryTransactionType.ITEM_USE
-            actionType = 0 // PLACE
-            blockPosition = clickPosition
-            blockFace = this@apply.blockFace
-            hotbarSlot = blockSlot
-            this.itemInHand = itemInHand
-            playerPosition = inputPacket.position
-            this.clickPosition = getClickPosition(blockFace, clickPosition)
-            runtimeEntityId = localPlayer.runtimeEntityId
-            blockDefinition = itemInHand.blockDefinition
-        }
-
-        session.serverBound(transactionPacket)
-        if (debugMode) session.displayClientMessage("Scaffold: Sent InventoryTransactionPacket at $blockPosition, face=$blockFace, clickPos=$clickPosition, item=${itemInHand.getDefinition()}")
-
-        // Временное обновление инвентаря
-        val newCount = itemInHand.getCount() - 1
-        val updatedItem = if (newCount > 0) {
-            itemInHand.toBuilder().count(newCount).build()
-        } else {
-            ItemData.AIR
-        }
-        inventory.content[blockSlot] = updatedItem
-        val slotPacket = InventorySlotPacket().apply {
-            containerId = 0
-            slot = blockSlot
-            item = updatedItem
-        }
-        session.clientBound(slotPacket)
-        if (debugMode) session.displayClientMessage("Scaffold: Updated inventory slot $blockSlot, newCount=$newCount")
-    }
-
-    override fun afterClientBound(packet: BedrockPacket) {
-        if (packet is InventoryTransactionPacket && packet.transactionType == InventoryTransactionType.ITEM_USE) {
-            val slot = packet.hotbarSlot
-            val item = packet.itemInHand
-            if (item != null && item != ItemData.AIR && packet.actionType == 0) {
-                val inventory = (session.localPlayer as? LocalPlayer)?.inventory as? PlayerInventory
-                if (inventory != null) {
-                    val currentItem = inventory.content[slot]
-                    val newItem = if (currentItem == ItemData.AIR) {
-                        item
-                    } else {
-                        item.toBuilder().count(currentItem.getCount() + 1).build()
-                    }
-                    inventory.content[slot] = newItem
-                    val slotPacket = InventorySlotPacket().apply {
-                        containerId = 0
-                        slot = this@apply.slot
-                        item = newItem
-                    }
-                    session.clientBound(slotPacket)
-                    if (debugMode) session.displayClientMessage("Scaffold: Transaction failed, restored slot $slot, count=${newItem.getCount()}")
-                }
-            }
-        }
-        // Подтверждение размещения
-        if (packet is UpdateBlockPacket) {
-            val world = session.world as? World
-            if (world != null) {
-                world.setBlockIdAt(packet.blockPosition, packet.definition.runtimeId)
-                if (debugMode) session.displayClientMessage("Scaffold: Confirmed block at ${packet.blockPosition}, id=${packet.definition.runtimeId}")
-            }
-        }
+        blockCache.clear()
+        selectedBlockSlot = null
     }
 }
