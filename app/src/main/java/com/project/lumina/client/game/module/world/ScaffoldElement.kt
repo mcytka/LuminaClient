@@ -18,7 +18,7 @@ import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
-// Импортируем PlayerAuthInputData, так как мы проверяем FORWARD
+// Импортируем PlayerAuthInputData, так как мы проверяем UP
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import kotlin.math.floor
 
@@ -38,10 +38,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
 
         val packet = interceptablePacket.packet
 
-        // --- Исправление 1: Проверяем правильный тип пакета ---
         if (packet is PlayerAuthInputPacket) {
-            // --- Исправление 2: Получаем yaw и pitch из rotation ---
-            // rotation это Vector3f? (x=pitch, y=yaw, z=не используется для головы в большинстве случаев)
             val playerPos = packet.position ?: return
             val motion = packet.motion ?: Vector2f.ZERO
             // В Bedrock packet.rotation.y это yaw (горизонтальный поворот), packet.rotation.x это pitch (вертикальный)
@@ -53,10 +50,9 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             val predictedY = playerPos.y
             val predictedZ = playerPos.z + motion.y
 
-            // --- Исправление 3: Проверяем движение через inputData или motion ---
-            // FORWARD может не существовать, проверим флаги или motion
-            val isMovingForward = inputData.contains(PlayerAuthInputData.UP) || // Часто используется для "вперёд"
-                                  (motion.x != 0f || motion.y != 0f) // Или просто движение
+            // Проверяем движение через inputData или motion
+            val isMovingForward = inputData.contains(PlayerAuthInputData.UP) ||
+                                  (motion.x != 0f || motion.y != 0f)
             val isJumping = inputData.contains(PlayerAuthInputData.JUMPING)
 
             val targetInfo = if (isJumping && headPitch < -60) {
@@ -96,9 +92,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     private fun calculateBridgingTarget(x: Float, y: Float, z: Float, yaw: Float): Pair<Vector3i, Int>? {
         val normalizedYaw = ((yaw % 360) + 360) % 360
         val direction = when {
-            // --- Исправление: Уточнение направлений ---
             // 0 = юг (Z+), 90 = запад (X-), 180 = север (Z-), 270 = восток (X+)
-            // Диапазоны скорректированы для более точного соответствия
             normalizedYaw in 315.0..360.0 || normalizedYaw in 0.0..45.0 -> Vector2f.from(0.0f, 1.0f) // Юг
             normalizedYaw in 45.0..135.0 -> Vector2f.from(-1.0f, 0.0f) // Запад
             normalizedYaw in 135.0..225.0 -> Vector2f.from(0.0f, -1.0f) // Север
@@ -120,15 +114,13 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     }
 
     /**
-     * --- Исправление 4: Используем session.level.getBlockId (из TODO: Level.getBlockId) ---
-     * Предполагаем, что session.level имеет метод getBlockId(x, y, z) или аналог.
-     * Из файла TODO: fun getBlockId(x: Int, y: Int, z: Int): Int
+     * Используем session.world.getBlockIdAt (из TODO: Level.getBlockIdAt)
      */
     private fun isAir(position: Vector3i): Boolean {
         return try {
-            // --- Исправление 4: Проверяем правильный вызов ---
+            // Предполагаем, что session.world имеет метод getBlockIdAt(Vector3i)
+            // и что 0 означает воздух (как в LevelDBWorld из TODO)
             val blockId = session.world.getBlockIdAt(position)
-            // 0 часто означает воздух. Уточнить по маппингу проекта.
             blockId == 0
         } catch (e: Exception) {
             // Если мир ещё не загружен или ошибка, считаем воздухом (для теста)
@@ -137,14 +129,16 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     }
 
     /**
-     * --- Исправление 5: Используем session.localPlayer.inventory (из TODO) ---
-     * TODO указывает на searchForItem и getItem.
+     * Используем session.localPlayer.inventory (из TODO)
+     * Используем searchForItemInHotbar из TODO
      */
     private fun findBlockInHotbar(): Int {
         return try {
-            // Ищем любой предмет в слотах 0-8 (хотбар), который не воздух
-            session.localPlayer.inventory.searchForItem(0..8) { itemData ->
-                itemData != null && !itemData.isNull() // && isBlockItem(itemData) - позже
+            // Используем метод из TODO файла: searchForItemInHotbar
+            session.localPlayer.inventory.searchForItemInHotbar { itemData ->
+                itemData != null && !itemData.isNull()
+                // TODO: Более точная проверка на "блок"
+                // && isBlockItem(itemData)
             } ?: -1
         } catch (e: Exception) {
             // Если инвентарь недоступен, возвращаем слот 0 (для теста)
@@ -153,7 +147,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     }
 
     /**
-     * --- Исправление 6 & 7: Используем InventoryActionData и правильную структуру пакета ---
+     * Используем InventoryActionData и правильную структуру пакета
      * Из TODO: ActionType: CLICK_BLOCK -> Это часть InventoryActionData
      * InventoryTransactionPacket.actions.add(InventoryActionData(...))
      */
@@ -165,30 +159,31 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         headYaw: Float,
         headPitch: Float
     ) {
-        // --- Исправление 5: Получаем предмет из инвентаря ---
-        val itemInHand = try {
-            val itemInHand = session.localPlayer.inventory.content[hotbarSlot] as? ItemData ?: ItemData.AIR
+        // Получаем предмет из инвентаря, используя прямой доступ к content и приведение типа
+        val itemInHand: ItemData = try {
+            session.localPlayer.inventory.content[hotbarSlot] as ItemData
         } catch (e: Exception) {
             ItemData.AIR
         }
 
         val clickPosition = calculateClickPosition(blockPos, blockFace)
 
-        // --- Исправление 6: Создаем правильный пакет ---
+        // Создаем правильный пакет
         val transactionPacket = InventoryTransactionPacket().apply {
             transactionType = InventoryTransactionType.ITEM_USE
 
-            // Создаем InventoryActionData, как в примерах из TODO
-            val action = InventoryActionData(
-                source = InventorySource.fromContainerWindowId(ContainerId.UI),
-                slot = 0,
-                fromItem = itemInHand,
-                toItem = ItemData.AIR,
-                stackNetworkId = 0
-            )
+            // Явно указываем типы для InventoryActionData
+            val source: InventorySource = InventorySource.fromContainerWindowId(ContainerId.UI)
+            val slot: Int = 0
+            val fromItem: ItemData = itemInHand
+            val toItem: ItemData = ItemData.AIR
+            val stackNetworkId: Int = 0
+
+            // Создаем InventoryActionData с правильными типами
+            val action = InventoryActionData(source, slot, fromItem, toItem, stackNetworkId)
             actions.add(action)
-            // --- Поля пакета ITEM_USE ---
-            // blockPosition, blockFace и т.д. устанавливаются прямо в пакете
+
+            // Поля пакета ITEM_USE
             this.blockPosition = blockPos
             this.blockFace = blockFace
             this.hotbarSlot = hotbarSlot
@@ -196,11 +191,11 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             this.clickPosition = clickPosition
             // itemInHand (heldItem) также устанавливается в пакете
             this.itemInHand = itemInHand
-            // headPosition может быть опционален или называться иначе
+            // headPosition может быть опционален
             // this.headPosition = Vector3f.from(headYaw, headPitch, 0f)
         }
 
-        // --- Отправляем пакет ---
+        // Отправляем пакет
         session.serverBound(transactionPacket)
     }
 
