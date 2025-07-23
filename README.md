@@ -255,3 +255,4 @@ For complete details, see the [LICENSE](https://github.com/TheProjectLumina/Lumi
 ## Final Thoughts
 
 Lumina Client is a form of love from the Project Lumina team, built for Minecraft Bedrock community. We’re excited to see how you use, customize, and contribute to Lumina. Join us on [Discord](https://discord.gg/78bqDpAHmK) or [YouTube](https://youtube.com/@prlumina) to stay connected, share your creations, and help shape the future of Lumina!
+
