@@ -12,7 +12,7 @@ import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryActionData
 // Источник инвентаря, как в примерах из TODO
-import org.cloudburstmc.protocol.bedrock.data.inventory.InventorySource
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventorySource
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId
 // Данные предмета, как в примерах из TODO
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
@@ -56,7 +56,6 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             // --- Исправление 3: Проверяем движение через inputData или motion ---
             // FORWARD может не существовать, проверим флаги или motion
             val isMovingForward = inputData.contains(PlayerAuthInputData.UP) || // Часто используется для "вперёд"
-                                  inputData.contains(PlayerAuthInputData.FORWARD) || // На случай, если есть
                                   (motion.x != 0f || motion.y != 0f) // Или просто движение
             val isJumping = inputData.contains(PlayerAuthInputData.JUMPING)
 
@@ -128,7 +127,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     private fun isAir(position: Vector3i): Boolean {
         return try {
             // --- Исправление 4: Проверяем правильный вызов ---
-            val blockId = session.level.getBlockId(position.x, position.y, position.z)
+            val blockId = session.level.getBlockIdAt(position)
             // 0 часто означает воздух. Уточнить по маппингу проекта.
             blockId == 0
         } catch (e: Exception) {
@@ -168,7 +167,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     ) {
         // --- Исправление 5: Получаем предмет из инвентаря ---
         val itemInHand = try {
-            session.localPlayer.inventory.getItem(hotbarSlot)
+            val itemInHand = session.localPlayer.inventory.content[hotbarSlot]
         } catch (e: Exception) {
             ItemData.AIR
         }
@@ -181,16 +180,11 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
 
             // Создаем InventoryActionData, как в примерах из TODO
             val action = InventoryActionData(
-                // Источник: рука игрока (UI inventory)
                 source = InventorySource.fromContainerWindowId(ContainerId.UI),
-                slot = 0, // Слот в источнике (обычно 0 для "в руке")
-                // fromItem - что было "в руке" до использования (предмет или воздух)
+                slot = 0,
                 fromItem = itemInHand,
-                // toItem - во что превратилось (обычно воздух после "использования")
-                toItem = ItemData.AIR
-                // Поля blockPosition, blockFace, etc. находятся в самом InventoryTransactionPacket
-                // или в специфичных для типа действиях, если используется ItemStackRequest.
-                // Для ITEM_USE они передаются отдельно.
+                toItem = ItemData.AIR,
+                stackNetworkId = 0 // <-- Добавили пятый обязательный параметр
             )
             actions.add(action)
             // --- Поля пакета ITEM_USE ---
