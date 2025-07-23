@@ -127,7 +127,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     private fun isAir(position: Vector3i): Boolean {
         return try {
             // --- Исправление 4: Проверяем правильный вызов ---
-            val blockId = session.level.getBlockIdAt(position)
+            val blockId = session.world.getBlockIdAt(position)
             // 0 часто означает воздух. Уточнить по маппингу проекта.
             blockId == 0
         } catch (e: Exception) {
@@ -167,7 +167,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     ) {
         // --- Исправление 5: Получаем предмет из инвентаря ---
         val itemInHand = try {
-            val itemInHand = session.localPlayer.inventory.content[hotbarSlot]
+            val itemInHand = session.localPlayer.inventory.content[hotbarSlot] as? ItemData ?: ItemData.AIR
         } catch (e: Exception) {
             ItemData.AIR
         }
@@ -184,7 +184,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
                 slot = 0,
                 fromItem = itemInHand,
                 toItem = ItemData.AIR,
-                stackNetworkId = 0 // <-- Добавили пятый обязательный параметр
+                stackNetworkId = 0
             )
             actions.add(action)
             // --- Поля пакета ITEM_USE ---
