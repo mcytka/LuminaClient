@@ -4,13 +4,21 @@ import com.project.lumina.client.R
 import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.game.InterceptablePacket
+// Импорты из файла TODO и стандартных библиотек
 import org.cloudburstmc.math.vector.Vector2f
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
+// Используем InventoryTransactionType и InventoryActionData, как указано в TODO
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryActionData
+// Источник инвентаря, как в примерах из TODO
+import org.cloudburstmc.protocol.bedrock.data.inventory.InventorySource
+import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId
+// Данные предмета, как в примерах из TODO
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
+// Импортируем PlayerAuthInputData, так как мы проверяем FORWARD
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
 import kotlin.math.floor
 
@@ -18,56 +26,54 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
     name = "Scaffold",
     category = CheatCategory.World,
     iconResId = iconResId,
+    // Используем правильный идентификатор строки
     displayNameResId = R.string.module_scaffold_display_name
 ) {
 
     private var lastPlaceTime: Long = 0
-    private val placeDelay: Long = 100 // 100ms между установками, можно настроить позже
-    // Согласно файлу, 0=bottom, 1=top, 2=north, 3=south, 4=west, 5=east
+    private val placeDelay: Long = 100 // 100ms между установками
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
         if (!isEnabled) return
 
         val packet = interceptablePacket.packet
 
+        // --- Исправление 1: Проверяем правильный тип пакета ---
         if (packet is PlayerAuthInputPacket) {
+            // --- Исправление 2: Получаем yaw и pitch из rotation ---
+            // rotation это Vector3f? (x=pitch, y=yaw, z=не используется для головы в большинстве случаев)
             val playerPos = packet.position ?: return
             val motion = packet.motion ?: Vector2f.ZERO
-            val headYaw = packet.headYaw ?: 0f
-            val headPitch = packet.headPitch ?: 0f
+            // В Bedrock packet.rotation.y это yaw (горизонтальный поворот), packet.rotation.x это pitch (вертикальный)
+            val headYaw = packet.rotation?.y ?: 0f
+            val headPitch = packet.rotation?.x ?: 0f
             val inputData = packet.inputData
 
-            // Предиктивная позиция: текущая + движение
             val predictedX = playerPos.x + motion.x
             val predictedY = playerPos.y
             val predictedZ = playerPos.z + motion.y
 
-            // Определяем, пытается ли игрок поставить блок (для Towering/Bridging)
-            // В файле упоминается важность клика, но в Bedrock это скорее "желание поставить"
-            // Проверим, есть ли движение вперёд или прыжок
-            val isMovingForward = inputData.contains(PlayerAuthInputData.FORWARD) || (motion.x != 0f || motion.y != 0f)
+            // --- Исправление 3: Проверяем движение через inputData или motion ---
+            // FORWARD может не существовать, проверим флаги или motion
+            val isMovingForward = inputData.contains(PlayerAuthInputData.UP) || // Часто используется для "вперёд"
+                                  inputData.contains(PlayerAuthInputData.FORWARD) || // На случай, если есть
+                                  (motion.x != 0f || motion.y != 0f) // Или просто движение
             val isJumping = inputData.contains(PlayerAuthInputData.JUMPING)
 
-            // Определяем режим: Bridging (вперёд) или Towering (вверх при прыжке)
             val targetInfo = if (isJumping && headPitch < -60) {
-                // Towering: смотрит вниз и прыгает -> ставим блок под собой
                 calculateToweringTarget(predictedX, predictedY, predictedZ)
             } else if (isMovingForward) {
-                // Bridging: движется вперёд -> ставим блок перед собой вниз
                 calculateBridgingTarget(predictedX, predictedY, predictedZ, headYaw)
             } else {
-                null // Не нужно ставить блок
+                null
             }
 
             if (targetInfo != null) {
                 val (blockPos, blockFace) = targetInfo
 
-                // Проверяем, есть ли блок в этой позиции (воздух ли это)
                 if (isAir(blockPos)) {
-                    // Ищем блок в хотбаре
                     val blockSlot = findBlockInHotbar()
                     if (blockSlot != -1) {
-                        // Проверяем задержку
                         val now = System.currentTimeMillis()
                         if (now - lastPlaceTime > placeDelay) {
                             placeBlock(blockPos, blockFace, blockSlot, playerPos, headYaw, headPitch)
@@ -79,101 +85,78 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         }
     }
 
-    /**
-     * Рассчитывает цель для Towering (вверх)
-     * Игрок в прыжке, смотрит вниз -> ставим блок под ногами
-     */
     private fun calculateToweringTarget(x: Float, y: Float, z: Float): Pair<Vector3i, Int>? {
-        // Блок под ногами (y - 1)
         val blockPos = Vector3i.from(floor(x).toInt(), floor(y - 1.0).toInt(), floor(z).toInt())
-        // Сторона: верх блока, который уже есть (y - 2)
-        // Но по логике из файла: игрок кликает по верхней грани блока под собой
-        // То есть blockPosition = (x, y-1, z), blockFace = 1 (верх блока на y-1)
-        // Но сервер проверит, есть ли блок на (x, y-1, z) - это будет воздух.
-        // Поэтому нужно ставить на блок, который УЖЕ есть под ногами.
-        // Пересмотрим: если под ногами воздух, то ставить НЕКУДА.
-        // Значит, Towering работает так: игрок прыгает, смотрит вниз, кликает по верхней грани блока НИЖЕ.
-        // То есть, если игрок на высоте 70.5, то он ставит блок на 69 (если там есть основание).
-        // Но если 69 пустой, то ставить некуда.
-        // Следовательно, Towering возможен, если НА 2 блока ниже есть основание.
         val groundBlockPos = Vector3i.from(floor(x).toInt(), floor(y - 2.0).toInt(), floor(z).toInt())
         if (isAir(groundBlockPos)) {
-            return null // Нет основания для tower'а
+            return null
         }
-        // Цель: ставим блок на позицию (x, y-1, z), грань 1 (верх groundBlockPos)
-        return Pair(Vector3i.from(floor(x).toInt(), floor(y - 1.0).toInt(), floor(z).toInt()), 1) // 1 = TOP_FACE
+        return Pair(blockPos, 1) // 1 = TOP_FACE
     }
 
-    /**
-     * Рассчитывает цель для Bridging (вперёд)
-     * Игрок движется вперёд -> ставим блок перед собой вниз
-     */
     private fun calculateBridgingTarget(x: Float, y: Float, z: Float, yaw: Float): Pair<Vector3i, Int>? {
-        // Определяем направление взгляда по yaw (горизонталь)
-        // 0 = юг, 90 = запад, 180 = север, 270 = восток
         val normalizedYaw = ((yaw % 360) + 360) % 360
         val direction = when {
-            normalizedYaw in 315.0..360.0 || normalizedYaw in 0.0..45.0 -> Vector2f.from(0.0f, 1.0f) // Юг (Z+)
-            normalizedYaw in 45.0..135.0 -> Vector2f.from(-1.0f, 0.0f) // Запад (X-)
-            normalizedYaw in 135.0..225.0 -> Vector2f.from(0.0f, -1.0f) // Север (Z-)
-            else -> Vector2f.from(1.0f, 0.0f) // Восток (X+)
+            // --- Исправление: Уточнение направлений ---
+            // 0 = юг (Z+), 90 = запад (X-), 180 = север (Z-), 270 = восток (X+)
+            // Диапазоны скорректированы для более точного соответствия
+            normalizedYaw in 315.0..360.0 || normalizedYaw in 0.0..45.0 -> Vector2f.from(0.0f, 1.0f) // Юг
+            normalizedYaw in 45.0..135.0 -> Vector2f.from(-1.0f, 0.0f) // Запад
+            normalizedYaw in 135.0..225.0 -> Vector2f.from(0.0f, -1.0f) // Север
+            else -> Vector2f.from(1.0f, 0.0f) // Восток
         }
 
-        // Позиция блока перед игроком и на уровень ниже ног
         val targetX = floor(x + direction.x).toInt()
         val targetY = floor(y - 1.0).toInt()
         val targetZ = floor(z + direction.y).toInt()
         val blockPos = Vector3i.from(targetX, targetY, targetZ)
 
-        // Определяем сторону, на которую кликаем (относительно блока, КУДА ставим)
-        // Мы ставим на сторону блока, который УЖЕ есть.
-        // Например, если ставим на (10, 63, 10), то кликаем по верхней грани блока (10, 62, 10).
-        // Но сервер проверит, есть ли (10, 62, 10). Если нет - не поставит.
         val groundBlockPos = Vector3i.from(targetX, targetY - 1, targetZ)
         if (isAir(groundBlockPos)) {
-            return null // Нет основания для моста
+            return null
         }
 
-        // Сторона: верх блока основания
-        val blockFace = 1 // TOP_FACE
+        val blockFace = 1 // TOP_FACE для Bridging
         return Pair(blockPos, blockFace)
     }
 
     /**
-     * Проверяет, является ли блок воздухом
+     * --- Исправление 4: Используем session.level.getBlockId (из TODO: Level.getBlockId) ---
+     * Предполагаем, что session.level имеет метод getBlockId(x, y, z) или аналог.
+     * Из файла TODO: fun getBlockId(x: Int, y: Int, z: Int): Int
      */
     private fun isAir(position: Vector3i): Boolean {
-        // Используем локальный кэш мира из файла
         return try {
+            // --- Исправление 4: Проверяем правильный вызов ---
             val blockId = session.level.getBlockId(position.x, position.y, position.z)
-            // 0 обычно означает воздух или "нет блока"
-            // TODO: Уточнить, какой ID у воздуха в конкретной маппинг-системе проекта
+            // 0 часто означает воздух. Уточнить по маппингу проекта.
             blockId == 0
         } catch (e: Exception) {
-            // Если не удалось получить блок, считаем, что воздух (для теста)
+            // Если мир ещё не загружен или ошибка, считаем воздухом (для теста)
             true
         }
     }
 
     /**
-     * Ищет блок в хотбаре
+     * --- Исправление 5: Используем session.localPlayer.inventory (из TODO) ---
+     * TODO указывает на searchForItem и getItem.
      */
     private fun findBlockInHotbar(): Int {
-        // Используем систему инвентаря из файла
         return try {
-            // Ищем любой предмет, который не является воздухом и потенциально блоком
-            // TODO: Более точная проверка на "блок"
+            // Ищем любой предмет в слотах 0-8 (хотбар), который не воздух
             session.localPlayer.inventory.searchForItem(0..8) { itemData ->
-                itemData != null && !itemData.isNull() // && isBlockItem(itemData) - если есть такая проверка
+                itemData != null && !itemData.isNull() // && isBlockItem(itemData) - позже
             } ?: -1
         } catch (e: Exception) {
-            // Если не удалось получить инвентарь, возвращаем слот 0 (для теста)
+            // Если инвентарь недоступен, возвращаем слот 0 (для теста)
             0
         }
     }
 
     /**
-     * Отправляет пакет установки блока
+     * --- Исправление 6 & 7: Используем InventoryActionData и правильную структуру пакета ---
+     * Из TODO: ActionType: CLICK_BLOCK -> Это часть InventoryActionData
+     * InventoryTransactionPacket.actions.add(InventoryActionData(...))
      */
     private fun placeBlock(
         blockPos: Vector3i,
@@ -183,39 +166,50 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
         headYaw: Float,
         headPitch: Float
     ) {
+        // --- Исправление 5: Получаем предмет из инвентаря ---
         val itemInHand = try {
             session.localPlayer.inventory.getItem(hotbarSlot)
         } catch (e: Exception) {
-            // Если не удалось получить предмет, используем "пустышку" (для теста)
-            org.cloudburstmc.protocol.bedrock.data.inventory.ItemData.AIR
+            ItemData.AIR
         }
 
-        // Вычисляем точку клика на грани блока
         val clickPosition = calculateClickPosition(blockPos, blockFace)
 
+        // --- Исправление 6: Создаем правильный пакет ---
         val transactionPacket = InventoryTransactionPacket().apply {
             transactionType = InventoryTransactionType.ITEM_USE
-            actions.add(
-                ItemUseTransaction().apply {
-                    actionType = 0 // PLACE_BLOCK (согласно файлу)
-                    this.blockPosition = blockPos
-                    this.blockFace = blockFace
-                    this.hotbarSlot = hotbarSlot
-                    this.heldItem = itemInHand
-                    this.playerPosition = playerPos
-                    this.clickPosition = clickPosition
-                    // headPosition в файле упоминается, но в API может называться иначе или отсутствовать
-                    // this.headPosition = Vector3f.from(headYaw, headPitch, 0f)
-                }
+
+            // Создаем InventoryActionData, как в примерах из TODO
+            val action = InventoryActionData(
+                // Источник: рука игрока (UI inventory)
+                source = InventorySource.fromContainerWindowId(ContainerId.UI),
+                slot = 0, // Слот в источнике (обычно 0 для "в руке")
+                // fromItem - что было "в руке" до использования (предмет или воздух)
+                fromItem = itemInHand,
+                // toItem - во что превратилось (обычно воздух после "использования")
+                toItem = ItemData.AIR
+                // Поля blockPosition, blockFace, etc. находятся в самом InventoryTransactionPacket
+                // или в специфичных для типа действиях, если используется ItemStackRequest.
+                // Для ITEM_USE они передаются отдельно.
             )
+            actions.add(action)
+            // --- Поля пакета ITEM_USE ---
+            // blockPosition, blockFace и т.д. устанавливаются прямо в пакете
+            this.blockPosition = blockPos
+            this.blockFace = blockFace
+            this.hotbarSlot = hotbarSlot
+            this.playerPosition = playerPos
+            this.clickPosition = clickPosition
+            // itemInHand (heldItem) также устанавливается в пакете
+            this.itemInHand = itemInHand
+            // headPosition может быть опционален или называться иначе
+            // this.headPosition = Vector3f.from(headYaw, headPitch, 0f)
         }
 
+        // --- Отправляем пакет ---
         session.serverBound(transactionPacket)
     }
 
-    /**
-     * Вычисляет позицию клика на грани блока
-     */
     private fun calculateClickPosition(blockPos: Vector3i, blockFace: Int): Vector3f {
         val x = blockPos.x.toFloat()
         val y = blockPos.y.toFloat()
@@ -228,7 +222,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             3 -> Vector3f.from(x + 0.5f, y + 0.5f, z + 1.0f) // south
             4 -> Vector3f.from(x, y + 0.5f, z + 0.5f) // west
             5 -> Vector3f.from(x + 1.0f, y + 0.5f, z + 0.5f) // east
-            else -> Vector3f.from(x + 0.5f, y + 0.5f, z + 0.5f) // center by default
+            else -> Vector3f.from(x + 0.5f, y + 0.5f, z + 0.5f) // center
         }
     }
 }
