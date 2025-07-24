@@ -126,10 +126,10 @@ android {
 dependencies {
     implementation(libs.leveldb)
     //implementation("com.github.CloudburstMC:NBT:master-SNAPSHOT") // this is left for future use and is currently being used in Dev Repo
-    implementation(libs.ui.graphics)
+    //implementation(libs.ui.graphics)
     implementation(libs.androidx.compose.material)
     implementation(libs.androidx.foundation.android)
-    implementation(libs.androidx.foundation.android)
+    //implementation(libs.androidx.foundation.android)
     implementation(libs.androidx.window)
     debugImplementation(platform(libs.log4j.bom))
     debugImplementation(libs.log4j.api)
