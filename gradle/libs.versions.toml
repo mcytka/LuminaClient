@@ -36,7 +36,7 @@ okhttp = "4.12.0"
 core = "1.15.0"
 appcompat = "1.6.1"
 material = "1.10.0"
-uiGraphics = "1.7.8"
+#uiGraphics = "1.7.8"
 composeMaterial = "1.4.1"
 foundationAndroid = "1.7.7"
 jackson = "2.18.0"
@@ -98,7 +98,7 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 androidx-core = { group = "androidx.core", name = "core", version.ref = "core" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
-ui-graphics = { module = "androidx.compose.ui:ui-graphics", version.ref = "uiGraphics" }
+#ui-graphics = { module = "androidx.compose.ui:ui-graphics", version.ref = "uiGraphics" }
 androidx-compose-material = { group = "androidx.wear.compose", name = "compose-material", version.ref = "composeMaterial" }
 androidx-foundation-android = { group = "androidx.compose.foundation", name = "foundation-android", version.ref = "foundationAndroid" }
 androidx-window = { group = "androidx.window", name = "window", version.ref = "window" }
