@@ -48,7 +48,7 @@ class ESPOverlay : OverlayWindow() {
 
     private var playerPosition by mutableStateOf(Vector3f.ZERO)
     private var playerRotation by mutableStateOf(Vector3f.ZERO)
-    private var entities by mutableStateOf(emptyList<Entity>())
+    private var entities by mutableStateOf(emptyList<ESPRenderEntity>()) // <-- ИЗМЕНЕНО
     private var fov by mutableStateOf(70f)
 
     companion object {
