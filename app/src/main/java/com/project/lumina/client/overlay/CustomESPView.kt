@@ -138,8 +138,8 @@ class CustomESPView @JvmOverloads constructor(
         Log.d("ESPDebug", "Yaw/Pitch (rad, after no inv): $yawRad, $pitchRad")
 
         // Выполняем вращение относительно Y (Yaw), затем относительно X (Pitch)
-        val x1 = dx * cos(yawRad) - dz * sin(yawRad)
-        val z1 = dx * sin(yawRad) + dz * cos(yawRad)
+        val x1 = dx * cos(yawRad) - (-dz) * sin(yawRad) // Инвертируем dz
+        val z1 = dx * sin(yawRad) + (-dz) * cos(yawRad) // Инвертируем dz
 
         Log.d("ESPDebug", "After Yaw Rotation (x1, z1): $x1, $z1")
 
