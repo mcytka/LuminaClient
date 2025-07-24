@@ -2,13 +2,11 @@ package com.project.lumina.client.game.module.misc
 
 import android.util.Log
 import com.project.lumina.client.R
-import com.project.lumina.client.application.AppContext
 import com.project.lumina.client.game.InterceptablePacket
 import com.project.lumina.client.constructors.Element
 import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.game.entity.*
-import com.project.lumina.client.overlay.OverlayManager
-import com.project.lumina.client.ui.opengl.ESPOverlayGLSurface
+import com.project.lumina.client.overlay.ESPOverlay
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 
@@ -21,35 +19,21 @@ class ESPElement : Element(
     private var rangeValue by floatValue("Range", 10f, 2f..100f)
     private var multiTarget = true
     private var maxTargets = 100
-    private var glSurface: ESPOverlayGLSurface? = null
 
     override fun onEnabled() {
         super.onEnabled()
         try {
-            if (isSessionCreated && AppContext.instance != null) {
-                glSurface = ESPOverlayGLSurface(AppContext.instance).apply {
-                    layoutParams = android.view.ViewGroup.LayoutParams(
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                }
-                OverlayManager.showCustomOverlay(glSurface!!)
-                Log.d("ESPModule", "ESP Overlay enabled")
-            } else {
-                Log.w("ESPModule", "Session not created or context unavailable")
-            }
+            ESPOverlay.showOverlay()
+            Log.d("ESPModule", "ESP Overlay enabled")
         } catch (e: Exception) {
-            Log.e("ESPModule", "Enable error: ${e.stackTraceToString()}")
+            Log.e("ESPModule", "Enable error: ${e.message}")
         }
     }
 
     override fun onDisabled() {
         super.onDisabled()
-        glSurface?.let {
-            OverlayManager.dismissCustomOverlay(it)
-            Log.d("ESPModule", "ESP Overlay disabled")
-        }
-        glSurface = null
+        ESPOverlay.dismissOverlay()
+        Log.d("ESPModule", "ESP Overlay disabled")
     }
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
@@ -60,10 +44,8 @@ class ESPElement : Element(
         val rotationYaw = packet.rotation.y
         val rotationPitch = packet.rotation.x
 
-        glSurface?.let {
-            it.updatePlayerPosition(position, rotationYaw, rotationPitch)
-            it.updateEntities(searchForClosestEntities().map { entity -> entity.vec3Position })
-        }
+        ESPOverlay.updatePlayerData(position, rotationPitch, rotationYaw)
+        ESPOverlay.updateEntities(searchForClosestEntities())
     }
 
     private fun searchForClosestEntities(): List<Entity> {
