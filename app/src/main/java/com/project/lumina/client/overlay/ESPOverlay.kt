@@ -8,7 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset // <<-- ВЕРНУЛИ ЭТОТ ИМПОРТ!
+import androidx.compose.ui.geometry.Offset // Этот импорт все еще нужен, так как CustomESPView использует Offset
 
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.viewinterop.AndroidView
@@ -19,15 +19,15 @@ import com.project.lumina.client.game.entity.MobList
 import com.project.lumina.client.game.entity.Player
 import org.cloudburstmc.math.vector.Vector3f
 
-// Добавляем импорты kotlin.math для функций cos, sin, tan
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.tan
-import kotlin.math.sqrt // Убедитесь, что этот импорт есть, если sqrt используется
-import kotlin.math.pow  // Убедитесь, что этот импорт есть, если pow используется
+// Эти импорты для kotlin.math.cos/sin/tan/sqrt/pow БОЛЬШЕ НЕ НУЖНЫ ЗДЕСЬ
+// так как worldToScreen перенесена в CustomESPView.kt
+// import kotlin.math.cos
+// import kotlin.math.sin
+// import kotlin.math.tan
+// import kotlin.math.sqrt
+// import kotlin.math.pow
 
 
-// Класс ESPOverlay остается почти таким же, меняется только Content()
 class ESPOverlay : OverlayWindow() {
     private val _layoutParams by lazy {
         super.layoutParams.apply {
@@ -91,15 +91,12 @@ class ESPOverlay : OverlayWindow() {
     override fun Content() {
         if (!shouldShowOverlay) return
 
-        // Вместо Compose Canvas используем AndroidView
         AndroidView(
-            modifier = Modifier.fillMaxSize(), // Занимает весь доступный размер
+            modifier = Modifier.fillMaxSize(),
             factory = { context ->
-                // Создаем и возвращаем наш CustomESPView
                 CustomESPView(context)
             },
             update = { customView ->
-                // Обновляем данные в CustomESPView каждый раз, когда состояния меняются
                 customView.updateESPData(
                     ESPData(
                         playerPosition = playerPosition,
@@ -112,7 +109,8 @@ class ESPOverlay : OverlayWindow() {
         )
     }
 
-    // Ваша функция worldToScreen остается здесь, так как она не зависит от Canvas API
+    // worldToScreen теперь УДАЛЕНА ИЗ ЭТОГО ФАЙЛА и находится в CustomESPView.kt!
+    /*
     private fun worldToScreen(
         entityPos: Vector3f,
         playerPos: Vector3f,
@@ -122,33 +120,7 @@ class ESPOverlay : OverlayWindow() {
         screenHeight: Float,
         fov: Float
     ): Offset? {
-        // Разница позиций
-        val dx = entityPos.x - playerPos.x
-        val dy = entityPos.y - playerPos.y
-        val dz = entityPos.z - playerPos.z
-
-        // Учет вращения игрока
-        val yawRad = Math.toRadians(playerYaw.toDouble()).toFloat()
-        val pitchRad = Math.toRadians(playerPitch.toDouble()).toFloat()
-
-        // Поворот по горизонтали
-        val x1 = dx * cos(yawRad) - dz * sin(yawRad)
-        val z1 = dx * sin(yawRad) + dz * cos(yawRad)
-
-        // Поворот по вертикали
-        val y1 = dy * cos(pitchRad) - z1 * sin(pitchRad)
-        val z2 = dy * sin(pitchRad) + z1 * cos(pitchRad)
-
-        // Если объект позади камеры - пропускаем
-        if (z2 < 0.1f) return null
-
-        // Проекция на экран
-        val fovRad = Math.toRadians(fov.toDouble()).toFloat()
-        val scale = (screenWidth / 2) / tan(fovRad / 2)
-
-        val screenX = (x1 / z2) * scale + screenWidth / 2
-        val screenY = screenHeight / 2 - (y1 / z2) * scale
-
-        return Offset(screenX, screenY)
+        // ... (вся логика worldToScreen)
     }
+    */
 }
