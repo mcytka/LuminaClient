@@ -1,5 +1,6 @@
 package com.project.lumina.client.overlay
 
+import android.graphics.Paint
 import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.foundation.Canvas
@@ -20,7 +21,12 @@ import com.project.lumina.client.game.entity.Item
 import com.project.lumina.client.game.entity.MobList
 import com.project.lumina.client.game.entity.Player
 import org.cloudburstmc.math.vector.Vector3f
-import kotlin.math.*
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
+import kotlin.math.tan
+import kotlin.math.pow
 
 class ESPOverlay : OverlayWindow() {
     private val _layoutParams by lazy {
@@ -41,7 +47,7 @@ class ESPOverlay : OverlayWindow() {
         get() = _layoutParams
 
     private var playerPosition by mutableStateOf(Vector3f.ZERO)
-    private var playerRotation by mutableStateOf(Vector3f.ZERO) // x=pitch, y=yaw, z=roll
+    private var playerRotation by mutableStateOf(Vector3f.ZERO)
     private var entities by mutableStateOf(emptyList<Entity>())
     private var fov by mutableStateOf(70f)
 
@@ -92,13 +98,13 @@ class ESPOverlay : OverlayWindow() {
         Canvas(modifier = Modifier.fillMaxSize()) {
             entities.forEach { entity ->
                 val screenPos = worldToScreen(
-                    entity.vec3Position,
-                    playerPosition,
-                    playerRotation.y,
-                    playerRotation.x,
-                    size.width,
-                    size.height,
-                    fov
+                    entityPos = entity.vec3Position,
+                    playerPos = playerPosition,
+                    playerYaw = playerRotation.y,
+                    playerPitch = playerRotation.x,
+                    screenWidth = size.width,
+                    screenHeight = size.height,
+                    fov = fov
                 )
                 
                 screenPos?.let {
@@ -128,7 +134,6 @@ class ESPOverlay : OverlayWindow() {
     private fun getEntitySize(entity: Entity): Pair<Float, Float> {
         return when {
             entity is Player -> Pair(0.6f, 1.8f) // Ширина 0.6, высота 1.8
-            entity is Mob -> Pair(0.6f, 1.8f)     // Для мобов
             entity is Item -> Pair(0.25f, 0.25f)  // Для предметов
             else -> Pair(0.5f, 0.5f)              // Для других сущностей
         }
@@ -138,15 +143,9 @@ class ESPOverlay : OverlayWindow() {
     private fun getEntityColor(entity: Entity): Color {
         return when {
             entity is Player -> Color.Red
-            isMob(entity) -> Color.Green
             entity is Item -> Color.Yellow
             else -> Color.Cyan
         }
-    }
-
-    // Проверка, является ли сущность мобом
-    private fun isMob(entity: Entity): Boolean {
-        return entity is EntityUnknown && entity.identifier in MobList.mobTypes
     }
 
     private fun worldToScreen(
@@ -183,11 +182,12 @@ class ESPOverlay : OverlayWindow() {
         val scale = (screenWidth / 2) / tan(fovRad / 2)
         
         val screenX = (x1 / z2) * scale + screenWidth / 2
-        val screenY = screenHeight / 2 - (y1 / z2) * scale // Инвертируем Y-ось
+        val screenY = screenHeight / 2 - (y1 / z2) * scale
         
         return Offset(screenX, screenY)
     }
 
+    @Suppress("FunctionName")
     private fun Canvas.drawEntityESP(
         position: Offset,
         distance: Float,
@@ -207,7 +207,7 @@ class ESPOverlay : OverlayWindow() {
             color = color,
             topLeft = Offset(position.x - screenWidth/2, position.y - screenHeight/2),
             size = Size(screenWidth, screenHeight),
-            style = Stroke(width = 2f), // Контур толщиной 2px
+            style = Stroke(width = 2f),
             alpha = 0.8f
         )
         
@@ -220,16 +220,17 @@ class ESPOverlay : OverlayWindow() {
         )
         
         // Отображаем расстояние
-        val paint = android.graphics.Paint().apply {
-            color = android.graphics.Color.WHITE
+        val paint = Paint().apply {
+            this.color = android.graphics.Color.WHITE
             textSize = 30f
-            textAlign = android.graphics.Paint.Align.CENTER
+            textAlign = Paint.Align.CENTER
             isAntiAlias = true
         }
+        
         drawContext.canvas.nativeCanvas.drawText(
             "%.1fm".format(distance),
             position.x,
-            position.y - screenHeight/2 - 15, // Над прямоугольником
+            position.y - screenHeight/2 - 15,
             paint
         )
     }
