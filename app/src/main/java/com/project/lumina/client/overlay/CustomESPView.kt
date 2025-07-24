@@ -2,7 +2,7 @@ package com.project.lumina.client.overlay
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color as AndroidColor // Переименовываем, чтобы избежать конфликта с Compose Color
+import android.graphics.Color as AndroidColor
 import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
@@ -10,13 +10,13 @@ import com.project.lumina.client.game.entity.Entity
 import com.project.lumina.client.game.entity.Item
 import com.project.lumina.client.game.entity.Player
 import org.cloudburstmc.math.vector.Vector3f
-// Добавляем импорты kotlin.math для функций, используемых здесь
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.tan
-import androidx.compose.ui.geometry.Offset // Используем Compose Offset, так как он удобен для координат
+import androidx.compose.ui.geometry.Offset
+import android.util.Log // <<-- Добавляем импорт для Log
 
 // Data-класс для передачи всех необходимых данных в View
 data class ESPData(
@@ -26,7 +26,6 @@ data class ESPData(
     val fov: Float
 )
 
-// Пользовательский View для отрисовки ESP
 class CustomESPView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -34,38 +33,34 @@ class CustomESPView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     private var espData: ESPData? = null
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG) // Создаем Paint один раз
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     init {
-        // Очень важно для View, который сам рисует
         setWillNotDraw(false)
-        // Устанавливаем прозрачный фон для View, чтобы он не перекрывал другие элементы
         setBackgroundColor(AndroidColor.TRANSPARENT)
     }
 
-    // Метод для обновления данных извне (из Compose)
     fun updateESPData(data: ESPData) {
         this.espData = data
-        invalidate() // Запрашиваем перерисовку View
+        invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        val data = espData ?: return // Если данных нет, ничего не рисуем
+        val data = espData ?: return
 
         val playerPosition = data.playerPosition
         val playerRotation = data.playerRotation
         val entities = data.entities
         val fov = data.fov
 
-        // Ширина и высота самого View для расчетов
         val screenWidth = width.toFloat()
         val screenHeight = height.toFloat()
 
         entities.forEach { entity ->
             val screenPos = worldToScreen(
-                entityPos = entity.vec3Position,
+                entity = entity,
                 playerPos = playerPosition,
                 playerYaw = playerRotation.y,
                 playerPitch = playerRotation.x,
@@ -82,10 +77,10 @@ class CustomESPView @JvmOverloads constructor(
                 ).toFloat()
 
                 val (entityWidth, entityHeight) = getEntitySize(entity)
-                val color = getEntityColor(entity) // Теперь возвращает Int
+                val color = getEntityColor(entity)
 
                 drawEntityESP(
-                    canvas = canvas, // Передаем нативный Canvas
+                    canvas = canvas,
                     position = it,
                     distance = distance,
                     entityWidth = entityWidth,
@@ -96,18 +91,15 @@ class CustomESPView @JvmOverloads constructor(
         }
     }
 
-    // Определение размера сущности на основе ее типа (скопировано из вашего ESPOverlay)
     private fun getEntitySize(entity: Entity): Pair<Float, Float> {
         return when {
             entity is Player -> Pair(0.6f, 1.8f) // Ширина 0.6, высота 1.8
-            entity is Item -> Pair(0.25f, 0.25f)  // Для предметов
-            else -> Pair(0.5f, 0.5f)              // Для других сущностей
+            entity is Item -> Pair(0.25f, 0.25f)
+            else -> Pair(0.5f, 0.5f)
         }
     }
 
-    // Определение цвета сущности на основе ее типа (скопировано из вашего ESPOverlay)
-    // Используем Int
-    private fun getEntityColor(entity: Entity): Int { // <<-- ТИП ИЗМЕНЕН НА Int
+    private fun getEntityColor(entity: Entity): Int {
         return when {
             entity is Player -> AndroidColor.RED
             entity is Item -> AndroidColor.YELLOW
@@ -115,9 +107,8 @@ class CustomESPView @JvmOverloads constructor(
         }
     }
 
-    // Логика worldToScreen остается прежней (скопировано из вашего ESPOverlay)
     private fun worldToScreen(
-        entityPos: Vector3f,
+        entity: Entity,
         playerPos: Vector3f,
         playerYaw: Float,
         playerPitch: Float,
@@ -125,67 +116,85 @@ class CustomESPView @JvmOverloads constructor(
         screenHeight: Float,
         fov: Float
     ): Offset? {
-        // Разница позиций
-        val dx = entityPos.x - playerPos.x
-        val dy = entityPos.y - playerPos.y
-        val dz = entityPos.z - playerPos.z
+        val cameraHeightOffset = 1.62f // Высота глаз игрока над ногами в Minecraft
+        val playerCameraY = playerPos.y + cameraHeightOffset
 
-        // Учет вращения игрока
-        val yawRad = Math.toRadians(playerYaw.toDouble()).toFloat()
+        val (_, entityTotalHeight) = getEntitySize(entity)
+        val entityCenterY = entity.vec3Position.y + (entityTotalHeight / 2)
+
+        val dx = entity.vec3Position.x - playerPos.x
+        val dy = entityCenterY - playerCameraY
+        val dz = entity.vec3Position.z - playerPos.z
+
+        Log.d("ESPDebug", "--- worldToScreen Debug ---")
+        Log.d("ESPDebug", "Player Pos: ${playerPos.x}, ${playerPos.y}, ${playerPos.z}")
+        Log.d("ESPDebug", "Entity Pos: ${entity.vec3Position.x}, ${entity.vec3Position.y}, ${entity.vec3Position.z}")
+        Log.d("ESPDebug", "Relative (dx, dy, dz): $dx, $dy, $dz")
+
+        val yawRad = Math.toRadians(-playerYaw.toDouble()).toFloat() // <<-- Вот это изменение!
         val pitchRad = Math.toRadians(playerPitch.toDouble()).toFloat()
 
-        // Поворот по горизонтали
+        Log.d("ESPDebug", "Player Yaw/Pitch (deg): $playerYaw, $playerPitch")
+        Log.d("ESPDebug", "Yaw/Pitch (rad, after inv): $yawRad, $pitchRad")
+
+
         val x1 = dx * cos(yawRad) - dz * sin(yawRad)
         val z1 = dx * sin(yawRad) + dz * cos(yawRad)
 
-        // Поворот по вертикали
+        Log.d("ESPDebug", "After Yaw Rotation (x1, z1): $x1, $z1")
+
         val y1 = dy * cos(pitchRad) - z1 * sin(pitchRad)
         val z2 = dy * sin(pitchRad) + z1 * cos(pitchRad)
 
-        // Если объект позади камеры - пропускаем
-        if (z2 < 0.1f) return null
+        Log.d("ESPDebug", "After Pitch Rotation (y1, z2): $y1, $z2")
 
-        // Проекция на экран
+        if (z2 < 0.1f) {
+            Log.d("ESPDebug", "Entity behind camera (z2: $z2)")
+            return null
+        }
+
         val fovRad = Math.toRadians(fov.toDouble()).toFloat()
         val scale = (screenWidth / 2) / tan(fovRad / 2)
+
+        Log.d("ESPDebug", "FOV Rad: $fovRad, Scale: $scale")
 
         val screenX = (x1 / z2) * scale + screenWidth / 2
         val screenY = screenHeight / 2 - (y1 / z2) * scale
 
+        Log.d("ESPDebug", "Final Screen Coords (X, Y): $screenX, $screenY")
+        Log.d("ESPDebug", "--- End worldToScreen Debug ---")
+
         return Offset(screenX, screenY)
     }
 
-    // Метод отрисовки ESP-элементов, использующий android.graphics.Canvas и Paint
     private fun drawEntityESP(
-        canvas: Canvas, // Получаем Canvas для рисования
+        canvas: Canvas,
         position: Offset,
         distance: Float,
         entityWidth: Float,
         entityHeight: Float,
-        color: Int // <<-- ТИП ИЗМЕНЕН НА Int
+        color: Int
     ) {
-        // Коэффициент масштабирования в зависимости от расстояния
         val scaleFactor = 1000f / distance.coerceAtLeast(1f)
-
-        // Размер на экране (сохраняем пропорции)
         val screenWidthPx = (entityWidth * scaleFactor).coerceIn(10f, 100f)
         val screenHeightPx = (entityHeight * scaleFactor).coerceIn(10f, 200f)
 
-        // Рисуем контурный прямоугольник (хитбокс)
+        val rectTop = position.y - screenHeightPx / 2
+        val rectBottom = position.y + screenHeightPx / 2
+
         paint.color = color
-        paint.style = Paint.Style.STROKE // Контурный стиль
+        paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2f
-        paint.alpha = (0.8f * 255).toInt() // Alpha для Android.graphics.Paint от 0 до 255
+        paint.alpha = (0.8f * 255).toInt()
         canvas.drawRect(
             position.x - screenWidthPx / 2,
-            position.y - screenHeightPx / 2,
+            rectTop,
             position.x + screenWidthPx / 2,
-            position.y + screenHeightPx / 2,
+            rectBottom,
             paint
         )
 
-        // Рисуем центральную точку
-        paint.style = Paint.Style.FILL // Залитый стиль
+        paint.style = Paint.Style.FILL
         paint.alpha = (0.9f * 255).toInt()
         canvas.drawCircle(
             position.x,
@@ -194,15 +203,14 @@ class CustomESPView @JvmOverloads constructor(
             paint
         )
 
-        // Отображаем расстояние
         paint.color = AndroidColor.WHITE
         paint.textSize = 30f
         paint.textAlign = Paint.Align.CENTER
-        paint.alpha = 255 // Полная непрозрачность для текста
+        paint.alpha = 255
         canvas.drawText(
             "%.1fm".format(distance),
             position.x,
-            position.y - screenHeightPx / 2 - 15, // Располагаем текст над прямоугольником
+            rectTop - 15,
             paint
         )
     }
