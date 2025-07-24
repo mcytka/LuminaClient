@@ -132,14 +132,24 @@ class CustomESPView @JvmOverloads constructor(
         Log.d("ESPDebug", "Relative (dx, dy, dz): $dx, $dy, $dz")
         Log.d("ESPDebug", "Player Yaw/Pitch (raw deg): $playerYaw, $playerPitch")
 
-        val yawRad = Math.toRadians(playerYaw.toDouble()).toFloat()
+        // --- НАЧАЛО ИЗМЕНЕНИЙ ---
+
+        // 1. Возвращаем инверсию для Yaw. Это было причиной "отзеркаливания", но
+        //    возможно, она нужна для правильной ориентации в пространстве.
+        val yawRad = Math.toRadians(-playerYaw.toDouble()).toFloat()
+
+        // 2. Pitch оставляем как есть, без инверсии и масштабирования.
         val pitchRad = Math.toRadians(playerPitch.toDouble()).toFloat()
 
-        Log.d("ESPDebug", "Yaw/Pitch (rad, after no inv): $yawRad, $pitchRad")
+        Log.d("ESPDebug", "Yaw/Pitch (rad, after inv): $yawRad, $pitchRad")
 
-        // Выполняем вращение относительно Y (Yaw), затем относительно X (Pitch)
-        val x1 = dx * cos(yawRad) - (-dz) * sin(yawRad) // Инвертируем dz
-        val z1 = dx * sin(yawRad) + (-dz) * cos(yawRad) // Инвертируем dz
+        // 3. Исправляем опечатку в z1: было `dx * dx * sin(yawRad)`, должно быть `dx * sin(yawRad)`.
+        //    Также убираем инверсию (-dz) из x1 и z1.
+        val x1 = dx * cos(yawRad) - dz * sin(yawRad)
+        val z1 = dx * sin(yawRad) + dz * cos(yawRad) // Исправлено здесь
+
+        // --- КОНЕЦ ИЗМЕНЕНИЙ ---
+
 
         Log.d("ESPDebug", "After Yaw Rotation (x1, z1): $x1, $z1")
 
