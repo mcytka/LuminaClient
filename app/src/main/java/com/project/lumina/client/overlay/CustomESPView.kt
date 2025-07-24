@@ -18,11 +18,17 @@ import kotlin.math.tan
 import androidx.compose.ui.geometry.Offset
 import android.util.Log
 
+// Новый Data-класс для сущностей, которые будут отрисовываться
+data class ESPRenderEntity(
+    val entity: Entity,
+    val username: String? // Nullable, так как не у всех Entity есть username
+)
+
 // Data-класс для передачи всех необходимых данных в View
 data class ESPData(
     val playerPosition: Vector3f,
     val playerRotation: Vector3f,
-    val entities: List<Entity>,
+    val entities: List<ESPRenderEntity>, // <<-- ИЗМЕНЕНО
     val fov: Float
 )
 
@@ -52,15 +58,18 @@ class CustomESPView @JvmOverloads constructor(
 
         val playerPosition = data.playerPosition
         val playerRotation = data.playerRotation
-        val entities = data.entities
+        val entities = data.entities // Теперь это List<ESPRenderEntity>
         val fov = data.fov
 
         val screenWidth = width.toFloat()
         val screenHeight = height.toFloat()
 
-        entities.forEach { entity ->
+        entities.forEach { renderEntity -> // <<-- ИЗМЕНЕНО: используем renderEntity
+            val entity = renderEntity.entity // Получаем саму Entity
+            val username = renderEntity.username // Получаем username
+
             val screenPos = worldToScreen(
-                entity = entity,
+                entity = entity, // Передаем Entity
                 playerPos = playerPosition,
                 playerYaw = playerRotation.y,
                 playerPitch = playerRotation.x,
@@ -85,7 +94,8 @@ class CustomESPView @JvmOverloads constructor(
                     distance = distance,
                     entityWidth = entityWidth,
                     entityHeight = entityHeight,
-                    color = color
+                    color = color,
+                    username = username // <<-- ПЕРЕДАЕМ USERNAME
                 )
             }
         }
@@ -122,27 +132,29 @@ class CustomESPView @JvmOverloads constructor(
         val (_, entityTotalHeight) = getEntitySize(entity)
         val entityCenterY = entity.vec3Position.y + (entityTotalHeight / 2)
 
-        // *** ИЗМЕНЕНИЕ 1: Инвертируем dz здесь, чтобы привести его к "стандартной" координате глубины ***
+        // *** ИЗМЕНЕНИЕ 1: Возвращаем dz к изначальному виду: entity.z - player.z.
         val dx = entity.vec3Position.x - playerPos.x
         val dy = entityCenterY - playerCameraY
-        val dz = playerPos.z - entity.vec3Position.z // Инверсия dz: разница между player.z и entity.z
+        val dz = entity.vec3Position.z - playerPos.z // Возвращаем оригинальное вычисление dz
 
         Log.d("ESPDebug", "--- worldToScreen Debug ---")
         Log.d("ESPDebug", "Player Pos: ${playerPos.x}, ${playerPos.y}, ${playerPos.z}")
         Log.d("ESPDebug", "Entity Pos: ${entity.vec3Position.x}, ${entity.vec3Position.y}, ${entity.vec3Position.z}")
-        Log.d("ESPDebug", "Relative (dx, dy, dz - inverted in calculation!): $dx, $dy, $dz") // Обновленный лог
+        Log.d("ESPDebug", "Relative (dx, dy, dz - original): $dx, $dy, $dz") // Обновленный лог
+
         Log.d("ESPDebug", "Player Yaw/Pitch (raw deg): $playerYaw, $playerPitch")
 
-        // *** ИЗМЕНЕНИЕ 2: Инвертируем Yaw для соответствия математическим функциям (если playerYaw идет по часовой) ***
+        // *** ИЗМЕНЕНИЕ 2: Сохраняем инверсию Yaw.
         val yawRad = Math.toRadians(-playerYaw.toDouble()).toFloat()
-        val pitchRad = Math.toRadians(playerPitch.toDouble()).toFloat()
 
-        Log.d("ESPDebug", "Yaw/Pitch (rad, after yaw inv): $yawRad, $pitchRad") // Обновленный лог
+        // *** ИЗМЕНЕНИЕ 3: Инвертируем Pitch. Это должно исправить проблему с вертикальным смещением.
+        val pitchRad = Math.toRadians(-playerPitch.toDouble()).toFloat() // Инвертируем Pitch
+
+        Log.d("ESPDebug", "Yaw/Pitch (rad, yaw inv, pitch inv): $yawRad, $pitchRad") // Обновленный лог
 
         // Выполняем вращение относительно Y (Yaw), затем относительно X (Pitch)
-        // Формулы остаются стандартными для (dx, dz) и (dy, z1)
         val x1 = dx * cos(yawRad) - dz * sin(yawRad)
-        val z1 = dx * sin(yawRad) + dz * cos(yawRad) // Опечатка была ИСПРАВЛЕНА здесь в прошлом ответе
+        val z1 = dx * sin(yawRad) + dz * cos(yawRad)
 
         Log.d("ESPDebug", "After Yaw Rotation (x1, z1): $x1, $z1")
 
@@ -151,9 +163,10 @@ class CustomESPView @JvmOverloads constructor(
 
         Log.d("ESPDebug", "After Pitch Rotation (y1, z2): $y1, $z2")
 
-        // Это условие теперь должно работать корректно, так как z2 должен быть положительным для видимых объектов.
-        if (z2 < 0.1f) {
-            Log.d("ESPDebug", "Entity behind camera (z2: $z2) or too close")
+        // Это условие теперь должно быть более строгим для задних объектов.
+        // Если z2 положительный, объект перед камерой. Если отрицательный - за камерой.
+        if (z2 < 0.1f) { // Значение 0.1f может быть изменено, если объекты слишком быстро исчезают.
+            Log.d("ESPDebug", "Entity behind camera (z2: $z2) or too close to clipping plane")
             return null
         }
 
@@ -162,7 +175,8 @@ class CustomESPView @JvmOverloads constructor(
 
         Log.d("ESPDebug", "FOV Rad: $fovRad, Scale: $scale")
 
-        val screenX = (x1 / z2) * scale + screenWidth / 2
+        // *** ИЗМЕНЕНИЕ 4: Инвертируем x1 при расчете screenX, чтобы исправить горизонтальное "отзеркаливание".
+        val screenX = (-x1 / z2) * scale + screenWidth / 2 // Инвертируем x1
         val screenY = screenHeight / 2 - (y1 / z2) * scale
 
         Log.d("ESPDebug", "Final Screen Coords (X, Y): $screenX, $screenY")
@@ -177,7 +191,8 @@ class CustomESPView @JvmOverloads constructor(
         distance: Float,
         entityWidth: Float,
         entityHeight: Float,
-        color: Int
+        color: Int,
+        username: String? // <<-- НОВЫЙ ПАРАМЕТР
     ) {
         val scaleFactor = 1000f / distance.coerceAtLeast(1f)
         val screenWidthPx = (entityWidth * scaleFactor).coerceIn(10f, 100f)
@@ -207,6 +222,22 @@ class CustomESPView @JvmOverloads constructor(
             paint
         )
 
+        // Отрисовка никнейма
+        username?.let {
+            paint.color = AndroidColor.WHITE
+            paint.textSize = 30f // Размер текста для никнейма
+            paint.textAlign = Paint.Align.CENTER
+            paint.alpha = 255
+            canvas.drawText(
+                it, // Сам никнейм
+                position.x,
+                rectTop - 45, // Располагаем никнейм над расстоянием
+                paint
+            )
+        }
+
+
+        // Отрисовка расстояния
         paint.color = AndroidColor.WHITE
         paint.textSize = 30f
         paint.textAlign = Paint.Align.CENTER
@@ -214,7 +245,7 @@ class CustomESPView @JvmOverloads constructor(
         canvas.drawText(
             "%.1fm".format(distance),
             position.x,
-            rectTop - 15,
+            rectTop - 15, // Располагаем текст над прямоугольником
             paint
         )
     }
