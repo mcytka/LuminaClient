@@ -1,7 +1,7 @@
 package com.project.lumina.client.overlay
 
 import android.content.Context
-import android.graphics.Canvas // <<-- Используем android.graphics.Canvas
+import android.graphics.Canvas
 import android.graphics.Color as AndroidColor // Переименовываем, чтобы избежать конфликта с Compose Color
 import android.graphics.Paint
 import android.util.AttributeSet
@@ -9,7 +9,8 @@ import android.view.View
 import com.project.lumina.client.game.entity.Entity
 import com.project.lumina.client.game.entity.Item
 import com.project.lumina.client.game.entity.Player
-import org.cloudburstmc.math.vector.Vector3f // Убедитесь, что этот импорт присутствует
+import org.cloudburstmc.math.vector.Vector3f
+// Добавляем импорты kotlin.math для функций, используемых здесь
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
@@ -81,7 +82,7 @@ class CustomESPView @JvmOverloads constructor(
                 ).toFloat()
 
                 val (entityWidth, entityHeight) = getEntitySize(entity)
-                val color = getEntityColor(entity)
+                val color = getEntityColor(entity) // Теперь возвращает Int
 
                 drawEntityESP(
                     canvas = canvas, // Передаем нативный Canvas
@@ -105,8 +106,8 @@ class CustomESPView @JvmOverloads constructor(
     }
 
     // Определение цвета сущности на основе ее типа (скопировано из вашего ESPOverlay)
-    // Используем android.graphics.Color
-    private fun getEntityColor(entity: Entity): AndroidColor {
+    // Используем Int
+    private fun getEntityColor(entity: Entity): Int { // <<-- ТИП ИЗМЕНЕН НА Int
         return when {
             entity is Player -> AndroidColor.RED
             entity is Item -> AndroidColor.YELLOW
@@ -161,7 +162,7 @@ class CustomESPView @JvmOverloads constructor(
         distance: Float,
         entityWidth: Float,
         entityHeight: Float,
-        color: AndroidColor // Используем android.graphics.Color
+        color: Int // <<-- ТИП ИЗМЕНЕН НА Int
     ) {
         // Коэффициент масштабирования в зависимости от расстояния
         val scaleFactor = 1000f / distance.coerceAtLeast(1f)
