@@ -4,6 +4,7 @@ import android.content.Context
 import android.opengl.GLSurfaceView
 import android.opengl.GLES20
 import android.opengl.Matrix
+import android.view.MotionEvent
 import org.cloudburstmc.math.vector.Vector3f
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
@@ -16,14 +17,22 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
 
     init {
         setEGLContextClientVersion(2)
-        
-        setEGLConfigChooser(8, 8, 8, 8, 16, 0) 
+        setEGLConfigChooser(8, 8, 8, 8, 0, 0) // Убрали буфер глубины
         holder.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
         renderer = ESPRenderer()
         setRenderer(renderer)
         renderMode = RENDERMODE_CONTINUOUSLY
+        setZOrderOnTop(true)
         
-        setZOrderOnTop(true) 
+        // Разрешаем прохождение касаний
+        isClickable = false
+        isFocusable = false
+        setOnTouchListener { _, _ -> false }
+    }
+
+    // Пропускаем все события касания
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        return false
     }
 
     fun updateEntities(entities: List<Vector3f>) {
@@ -44,10 +53,10 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
         private val projectionMatrix = FloatArray(16)
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-            GLES20.glClearColor(0f, 0f, 0f, 0f) 
-            GLES20.glEnable(GLES20.GL_DEPTH_TEST)
-            GLES20.glEnable(GLES20.GL_BLEND) 
-            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA) 
+            GLES20.glClearColor(0f, 0f, 0f, 0f) // Полностью прозрачный фон
+            GLES20.glDisable(GLES20.GL_DEPTH_TEST) // Отключаем тест глубины
+            GLES20.glEnable(GLES20.GL_BLEND)
+            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
             SimpleShader.init()
         }
 
@@ -58,9 +67,12 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
         }
 
         override fun onDrawFrame(gl: GL10?) {
-            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
+            // Очищаем только цветовой буфер
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
-            // Calculate the lookAt vector based on player's rotationYaw and rotationPitch
+            // Если нет сущностей - пропускаем рендеринг
+            if (entityList.isEmpty()) return
+
             val pitchRad = Math.toRadians(rotationPitch.toDouble()).toFloat()
             val yawRad = Math.toRadians(rotationYaw.toDouble()).toFloat()
 
@@ -69,17 +81,13 @@ class ESPOverlayGLSurface(context: Context) : GLSurfaceView(context) {
             val lookZ = cos(pitchRad) * cos(yawRad)
 
             val eyeX = playerPos.x
-            val eyeY = playerPos.y + 1.5f // eye height offset
+            val eyeY = playerPos.y + 1.5f
             val eyeZ = playerPos.z
-
-            val centerX = eyeX + lookX
-            val centerY = eyeY + lookY
-            val centerZ = eyeZ + lookZ
 
             Matrix.setLookAtM(
                 viewMatrix, 0,
                 eyeX, eyeY, eyeZ,
-                centerX, centerY, centerZ,
+                eyeX + lookX, eyeY + lookY, eyeZ + lookZ,
                 0f, 1f, 0f
             )
 
