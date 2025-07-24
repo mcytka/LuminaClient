@@ -16,7 +16,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.project.lumina.client.game.entity.Entity
 import com.project.lumina.client.game.entity.Item
 import com.project.lumina.client.game.entity.MobList
-import com.project.lumina.client.game.entity.Player
+import com.project.lumina.client.game.entity.Player // Убедитесь, что Player импортирован
 import org.cloudburstmc.math.vector.Vector3f
 
 // Эти импорты для kotlin.math.cos/sin/tan/sqrt/pow БОЛЬШЕ НЕ НУЖНЫ ЗДЕСЬ
@@ -48,7 +48,7 @@ class ESPOverlay : OverlayWindow() {
 
     private var playerPosition by mutableStateOf(Vector3f.ZERO)
     private var playerRotation by mutableStateOf(Vector3f.ZERO)
-    private var entities by mutableStateOf(emptyList<ESPRenderEntity>()) // <-- ИЗМЕНЕНО
+    private var entities by mutableStateOf(emptyList<ESPRenderEntity>()) // <-- ИСПРАВЛЕНИЕ ЗДЕСЬ!
     private var fov by mutableStateOf(70f)
 
     companion object {
@@ -79,7 +79,13 @@ class ESPOverlay : OverlayWindow() {
         }
 
         fun updateEntities(entityList: List<Entity>) {
-            overlayInstance.entities = entityList
+            // Преобразуем List<Entity> в List<ESPRenderEntity>
+            overlayInstance.entities = entityList.map { entity ->
+                ESPRenderEntity(
+                    entity = entity,
+                    username = (entity as? Player)?.username // Приводим к Player и получаем username
+                )
+            }
         }
 
         fun setFov(newFov: Float) {
