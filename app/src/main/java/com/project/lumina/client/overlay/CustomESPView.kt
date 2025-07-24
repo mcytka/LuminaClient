@@ -126,25 +126,17 @@ class CustomESPView @JvmOverloads constructor(
         val dy = entityCenterY - playerCameraY
         val dz = entity.vec3Position.z - playerPos.z
 
-        // --- Начало новых изменений ---
-        // Разделим углы на 100, предполагая, что они приходят в "centi-градусах".
-        // Это самое распространенное масштабирование для углов в сетевых протоколах.
-        val scaledPlayerYaw = playerYaw / 100.0f
-        val scaledPlayerPitch = playerPitch / 100.0f
-        // --- Конец новых изменений ---
-
         Log.d("ESPDebug", "--- worldToScreen Debug ---")
         Log.d("ESPDebug", "Player Pos: ${playerPos.x}, ${playerPos.y}, ${playerPos.z}")
         Log.d("ESPDebug", "Entity Pos: ${entity.vec3Position.x}, ${entity.vec3Position.y}, ${entity.vec3Position.z}")
         Log.d("ESPDebug", "Relative (dx, dy, dz): $dx, $dy, $dz")
-
-        val yawRad = Math.toRadians(-scaledPlayerYaw.toDouble()).toFloat() // Используем масштабированный угол и инверсию
-        val pitchRad = Math.toRadians(scaledPlayerPitch.toDouble()).toFloat() // Используем масштабированный угол
-
         Log.d("ESPDebug", "Player Yaw/Pitch (raw deg): $playerYaw, $playerPitch")
-        Log.d("ESPDebug", "Scaled Player Yaw/Pitch (deg): $scaledPlayerYaw, $scaledPlayerPitch") // Добавленный лог
-        Log.d("ESPDebug", "Yaw/Pitch (rad, after inv/scaling): $yawRad, $pitchRad")
 
+        // *** ИЗМЕНЕНИЕ ЗДЕСЬ: Убираем инверсию для Yaw ***
+        val yawRad = Math.toRadians(playerYaw.toDouble()).toFloat() // Без инверсии
+        val pitchRad = Math.toRadians(playerPitch.toDouble()).toFloat()
+
+        Log.d("ESPDebug", "Yaw/Pitch (rad, after no inv): $yawRad, $pitchRad") // Обновленный лог
 
         val x1 = dx * cos(yawRad) - dz * sin(yawRad)
         val z1 = dx * sin(yawRad) + dz * cos(yawRad)
