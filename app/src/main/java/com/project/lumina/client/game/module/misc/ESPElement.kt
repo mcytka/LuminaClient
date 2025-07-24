@@ -46,6 +46,7 @@ class ESPElement : Element(
 
         ESPOverlay.updatePlayerData(position, rotationPitch, rotationYaw)
         ESPOverlay.updateEntities(searchForClosestEntities())
+        ESPOverlay.setFov(60.0f) // <-- ДОБАВЬТЕ ЭТУ СТРОКУ! (Используйте ваше точное значение FOV)
     }
 
     private fun searchForClosestEntities(): List<Entity> {
