@@ -1,5 +1,6 @@
 package com.project.lumina.client.overlay
 
+import android.annotation.SuppressLint // Добавлен для @SuppressLint("DefaultLocale")
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
@@ -17,11 +18,14 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.pow
-import kotlin.math.atan2
-import kotlin.math.abs
-import kotlin.math.tan
-import androidx.compose.ui.geometry.Offset
-import android.util.Log
+// Эти импорты уже были не нужны, но их наличие не критично, просто для порядка можно убрать:
+// import kotlin.math.atan2
+// import kotlin.math.abs
+// import kotlin.math.tan
+// import androidx.compose.ui.geometry.Offset // Этот импорт используется, но как альтернатива Vector2f, пусть останется
+
+
+import android.util.Log // Для Log.d/e
 
 data class ESPRenderEntity(
     val entity: Entity,
@@ -92,12 +96,9 @@ class CustomESPView @JvmOverloads constructor(
             // Определяем размеры сущности
             val (entityWidth, entityHeight) = getEntitySize(entity)
 
-            // Важно: если entity.vec3Position это ноги, то для получения центра и головы
-            // нужно будет добавить смещение по Y
             val entityCenterX = entity.vec3Position.x
             val entityCenterZ = entity.vec3Position.z
 
-            // ИЗМЕНЕНИЕ:
             // Предполагаем, что entity.vec3Position.y - это уровень глаз (или верхней части тела) сущности.
             // Вычитаем 1.62f (стандартную высоту глаз над ногами в Minecraft), чтобы получить уровень ног.
             val entityFeetY = entity.vec3Position.y - 1.62f
@@ -146,7 +147,7 @@ class CustomESPView @JvmOverloads constructor(
                 return@forEach
             }
 
-            // Вычисляем минимальные/максимальные X/Y на экране для 2D-бокса
+            // Вычисляем минимальные/максимальные X/Y на экране для 2D-бокса (все еще нужно для текста)
             screenPositions.forEach { screenPos ->
                 minX_screen = minX_screen.coerceAtMost(screenPos.x)
                 minY_screen = minY_screen.coerceAtMost(screenPos.y)
@@ -169,10 +170,16 @@ class CustomESPView @JvmOverloads constructor(
             ).toFloat()
 
             val color = getEntityColor(entity)
+            paint.color = color // Устанавливаем цвет для 3D-бокса
 
-            // Передаем min/max screen X/Y для 2D бокса
-            draw2DBox(canvas, paint, minX_screen, minY_screen, maxX_screen, maxY_screen, color, username, distance)
-            // Если захотите 3D бокс, то будете рисовать линии между projectedScreenPositions[i] и projectedScreenPositions[j]
+
+            // ИЗМЕНЕНИЕ: Заменяем draw2DBox на draw3DBox
+            draw3DBox(canvas, paint, screenPositions)
+
+            // Рисуем информацию о сущности (имя и дистанция)
+            if (username != null || distance > 0) {
+                drawEntityInfo(canvas, paint, username, distance, minX_screen, minY_screen, maxX_screen)
+            }
         }
     }
 
@@ -246,7 +253,8 @@ class CustomESPView @JvmOverloads constructor(
         }
     }
 
-    // Измененная функция отрисовки 2D бокса, чтобы использовать min/max X/Y
+    // Эта функция больше не используется, но может быть полезной для отладки или других целей,
+    // если вам когда-либо понадобится 2D-бокс
     private fun draw2DBox(canvas: Canvas, paint: Paint, minX: Float, minY: Float, maxX: Float, maxY: Float, color: Int, username: String?, distance: Float) {
         paint.color = color
         paint.style = Paint.Style.STROKE
@@ -285,4 +293,100 @@ class CustomESPView @JvmOverloads constructor(
             paint
         )
     }
-}
+
+    // Новая функция для отрисовки 3D-бокса (каркаса)
+    private fun draw3DBox(canvas: Canvas, paint: Paint, screenPositions: List<Vector2f>) {
+        if (screenPositions.size != 8) {
+            // Если не 8 спроецированных вершин, значит что-то пошло не так, не рисуем
+            return
+        }
+
+        // Устанавливаем стиль для рисования линий бокса
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3f
+        paint.alpha = (0.9f * 255).toInt() // Прозрачность
+
+        // Определяем ребра куба по индексам вершин (согласно порядку в boxVertices)
+        // Нижняя плоскость: 0-3-7-4-0
+        drawLine(canvas, paint, screenPositions[0], screenPositions[3])
+        drawLine(canvas, paint, screenPositions[3], screenPositions[7])
+        drawLine(canvas, paint, screenPositions[7], screenPositions[4])
+        drawLine(canvas, paint, screenPositions[4], screenPositions[0])
+
+        // Верхняя плоскость: 1-2-6-5-1
+        drawLine(canvas, paint, screenPositions[1], screenPositions[2])
+        drawLine(canvas, paint, screenPositions[2], screenPositions[6])
+        drawLine(canvas, paint, screenPositions[6], screenPositions[5])
+        drawLine(canvas, paint, screenPositions[5], screenPositions[1])
+
+        // Вертикальные ребра (соединяющие верх и низ)
+        drawLine(canvas, paint, screenPositions[0], screenPositions[1]) // 0-1
+        drawLine(canvas, paint, screenPositions[3], screenPositions[2]) // 3-2
+        drawLine(canvas, paint, screenPositions[7], screenPositions[6]) // 7-6
+        drawLine(canvas, paint, screenPositions[4], screenPositions[5]) // 4-5
+    }
+
+    // Вспомогательная функция для рисования линии между двумя Vector2f
+    private fun drawLine(canvas: Canvas, paint: Paint, p1: Vector2f, p2: Vector2f) {
+        canvas.drawLine(p1.x, p1.y, p2.x, p2.y, paint)
+    }
+
+
+    // Функция для отрисовки имени и дистанции над боксом
+    @SuppressLint("DefaultLocale")
+    private fun drawEntityInfo(canvas: Canvas, paint: Paint, username: String?, distance: Float, minX: Float, minY: Float, maxX: Float) {
+        // Background paint for text
+        val bgPaint = Paint().apply {
+            color = AndroidColor.argb(160, 0, 0, 0) // Semi-transparent black background
+            style = Paint.Style.FILL
+        }
+
+        // Outline paint
+        val outlinePaint = Paint().apply {
+            color = AndroidColor.BLACK
+            textSize = 30f
+            textAlign = Paint.Align.CENTER
+            style = Paint.Style.STROKE
+            strokeWidth = 4f // Thick outline
+        }
+
+        val textPaint = Paint().apply {
+            color = AndroidColor.WHITE // Цвет текста.
+            textSize = 30f
+            textAlign = Paint.Align.CENTER
+            style = Paint.Style.FILL
+        }
+
+        val info = buildString {
+            if (username != null) { // Если имя есть, добавляем его
+                append(username)
+            }
+            // Всегда показываем дистанцию, если она больше 0
+            if (distance > 0) {
+                if (isNotEmpty()) append(" | ")
+                append("%.1fm".format(distance))
+            }
+        }
+
+        // Если нет информации для отображения, выходим
+        if (info.isEmpty()) return
+
+        val textX = (minX + maxX) / 2 // Используем minX_screen и maxX_screen для центрирования
+        val textY = minY - 10 // Над верхней частью бокса
+
+        val bounds = android.graphics.Rect()
+        textPaint.getTextBounds(info, 0, info.length, bounds)
+
+        val padding = 8f
+        val bgRect = android.graphics.RectF(
+            textX - bounds.width() / 2 - padding,
+            textY - bounds.height() - padding,
+            textX + bounds.width() / 2 + padding,
+            textY + padding
+        )
+        canvas.drawRoundRect(bgRect, 4f, 4f, bgPaint)
+
+        // Отрисовка текста с обводкой и заливкой
+        canvas.drawText(info, textX, textY, outlinePaint)
+        canvas.drawText(info, textX, textY, textPaint)
+    }
