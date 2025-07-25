@@ -158,7 +158,7 @@ class CustomESPView @JvmOverloads constructor(
         val y1 = dy * cos(pitchRad) - z1 * sin(pitchRad)
         val z2 = dy * sin(pitchRad) + z1 * cos(pitchRad)
 
-        Log.d("ESPDebug", "After Pitch Rotation (y1, z2): $y1, $z2")
+        Log.d("ESPDebug", "After Pitch Rotation (y1, z2): $y1, z2: $z2") // Исправлен лог для y1, z2
 
         if (z2 < 0.1f) {
             Log.d("ESPDebug", "Entity behind camera (z2: $z2) or too close to clipping plane")
@@ -166,17 +166,14 @@ class CustomESPView @JvmOverloads constructor(
         }
 
         val fovRad = Math.toRadians(fov.toDouble()).toFloat()
-        
-        // *** ГЛАВНОЕ ИЗМЕНЕНИЕ: Расчет scale на основе ВЕРТИКАЛЬНОГО FOV и ВЫСОТЫ ЭКРАНА ***
-        val scale = (screenHeight / 2) / tan(fovRad / 2) // <-- ИЗМЕНЕНО!
-
+        val scale = (screenHeight / 2) / tan(fovRad / 2) // Расчет scale на основе ВЕРТИКАЛЬНОГО FOV
         val aspectRatio = screenWidth / screenHeight // Расчет аспектного соотношения
         
         Log.d("ESPDebug", "Debug Scale Calculation: fov: $fov, fovRad: $fovRad, tanHalfFov: ${tan(fovRad / 2)}, screenHeight/2: ${screenHeight / 2}, calculated Scale: $scale")
-        Log.d("ESPDebug", "FOV Rad: $fovRad, Scale: $scale, Aspect Ratio: $aspectRatio") // Добавили логирование Aspect Ratio
+        Log.d("ESPDebug", "FOV Rad: $fovRad, Scale: $scale, Aspect Ratio: $aspectRatio")
 
-        // *** ИЗМЕНЕНИЕ: Применение аспектного соотношения к screenX ***
-        val screenX = (x1 / z2) * scale * aspectRatio + screenWidth / 2 // <-- ИЗМЕНЕНО!
+        // *** ГЛАВНОЕ ИЗМЕНЕНИЕ: Инвертируем x1 при расчете screenX ***
+        val screenX = (-x1 / z2) * scale * aspectRatio + screenWidth / 2 // <-- ИЗМЕНЕНО: добавлена инверсия -x1
         val screenY = screenHeight / 2 - (y1 / z2) * scale // Y остается без изменения, т.к. scale уже по Y
 
         Log.d("ESPDebug", "Final Screen Coords (X, Y): $screenX, $screenY")
