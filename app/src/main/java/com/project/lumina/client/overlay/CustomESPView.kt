@@ -9,14 +9,19 @@ import android.view.View
 import com.project.lumina.client.game.entity.Entity
 import com.project.lumina.client.game.entity.Item
 import com.project.lumina.client.game.entity.Player
-import org.cloudburstmc.math.matrix.Matrix4f // Новый импорт
-import org.cloudburstmc.math.vector.Vector2f // Новый импорт
+import com.project.lumina.client.game.entity.LocalPlayer // <<< ДОБАВЛЕННЫЙ ИМПОРТ
+import org.cloudburstmc.math.matrix.Matrix4f
+import org.cloudburstmc.math.vector.Vector2f
 import org.cloudburstmc.math.vector.Vector3f
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.pow
-import android.util.Log // Для отладки
+import kotlin.math.atan2
+import kotlin.math.abs
+import kotlin.math.tan
+import androidx.compose.ui.geometry.Offset
+import android.util.Log
 
 data class ESPRenderEntity(
     val entity: Entity,
@@ -114,19 +119,25 @@ class CustomESPView @JvmOverloads constructor(
             var minY_screen = screenHeight
             var maxX_screen = 0f
             var maxY_screen = 0f
-            var allVerticesProjected = true
+            var anyVertexBehindCamera = false // Флаг для отслеживания вершин за камерой
 
             // Проецируем каждую вершину
             val screenPositions = boxVertices.mapNotNull { vertex ->
                 val screenPos = worldToScreen(vertex, viewProjMatrix, screenWidth.toInt(), screenHeight.toInt())
                 if (screenPos == null) {
-                    allVerticesProjected = false // Если хотя бы одна вершина не проецируется (за камерой), не рисуем
+                    anyVertexBehindCamera = true // Если хотя бы одна вершина не проецируется (за камерой)
                 }
                 screenPos
             }
 
-            if (!allVerticesProjected || screenPositions.isEmpty()) {
-                continue // Пропускаем сущность, если не все вершины проецируются (т.е. часть за камерой)
+            // Если хотя бы одна вершина за камерой, пропускаем сущность
+            if (anyVertexBehindCamera) {
+                return@forEach // ИСПОЛЬЗУЕМ return@forEach вместо continue
+            }
+
+            // Если все вершины проецировались, но список пуст (что маловероятно), тоже пропускаем
+            if (screenPositions.isEmpty()) {
+                return@forEach // ИСПОЛЬЗУЕМ return@forEach вместо continue
             }
 
             // Вычисляем минимальные/максимальные X/Y на экране для 2D-бокса
@@ -141,7 +152,7 @@ class CustomESPView @JvmOverloads constructor(
             val margin = 10f // Маленький отступ, чтобы бокс исчезал сразу за краем
             if (maxX_screen <= -margin || minX_screen >= screenWidth + margin ||
                 maxY_screen <= -margin || minY_screen >= screenHeight + margin) {
-                continue // Пропускаем, если бокс полностью вне экрана
+                return@forEach // ИСПОЛЬЗУЕМ return@forEach вместо continue
             }
 
             // Если бокс виден, отрисовываем его
