@@ -1,118 +1,125 @@
 package com.project.lumina.client.game.world
 
 import android.util.Log
-import com.project.lumina.client.constructors.NetBound
-import com.project.lumina.client.game.event.EventChunkLoad
-import com.project.lumina.client.game.event.GameEvent
-import com.project.lumina.client.game.event.Listenable
-import com.project.lumina.client.game.world.chunk.Chunk
+import com.project.lumina.client.constructors.NetBound // Импортируем NetBound
 import org.cloudburstmc.math.vector.Vector3i
-import org.cloudburstmc.protocol.bedrock.data.SubChunkRequestResult
-import org.cloudburstmc.protocol.bedrock.packet.*
+import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition
+import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket // Импортируем BedrockPacket
+import org.cloudburstmc.protocol.bedrock.packet.LevelChunkPacket
+import org.cloudburstmc.protocol.bedrock.packet.UpdateBlockPacket
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.floor
 
-class World(val session: NetBound) : Listenable {
+class World(private val session: NetBound) { // <--- ДОБАВЛЕН КОНСТРУКТОР С NetBound
 
-    override val eventManager = session.eventManager
-    private val pendingEvents = mutableListOf<GameEvent>()
-    private val chunks = ConcurrentHashMap<Long, Chunk>()
-    private var viewDistance = -1
+    // Карта для хранения блоков: ключ - хеш чанка, значение - карта блоков в этом чанке
+    private val loadedBlocks = ConcurrentHashMap<Long, ConcurrentHashMap<Vector3i, Int>>()
+    private val BLOCK_ID_AIR = 0 // Bedrock Protocol: 0 обычно означает воздух
+    private val TAG_WORLD = "LuminaWorld" // Тег для логов мира
 
-    private fun safeEmit(event: GameEvent) {
-        if (eventManager != null) {
-            if (pendingEvents.isNotEmpty()) {
-                pendingEvents.forEach { eventManager.emit(it) }
-                pendingEvents.clear()
-            }
-            eventManager.emit(event)
-        } else {
-            pendingEvents.add(event)
+    /**
+     * Возвращает Block Runtime ID блока по заданной позиции.
+     * Если чанк не загружен или блок не найден, возвращает ID воздуха (0).
+     */
+    fun getBlockIdAt(position: Vector3i): Int {
+        val chunkX = position.x shr 4 // Делим на 16, чтобы получить X-координату чанка
+        val chunkZ = position.z shr 4 // Делим на 16, чтобы получить Z-координату чанка
+        val chunkHash = getChunkHash(chunkX, chunkZ)
+
+        val chunkBlocks = loadedBlocks[chunkHash]
+        if (chunkBlocks != null) {
+            val blockId = chunkBlocks[position] ?: BLOCK_ID_AIR // Если блок не найден в чанке, считаем воздухом
+            // Log.d(TAG_WORLD, "getBlockIdAt($position): Found ID=$blockId in loaded chunk ($chunkX, $chunkZ)")
+            return blockId
         }
+        // Log.d(TAG_WORLD, "getBlockIdAt($position): Chunk ($chunkX, $chunkZ) not loaded. Returning AIR.")
+        return BLOCK_ID_AIR
     }
 
-    fun initFromStartGame(packet: StartGamePacket) {
-        chunks.clear()
-        viewDistance = packet.serverChunkTickRange
-        Log.i("World", "🌍 Initialized World from StartGamePacket with viewDistance $viewDistance")
-    }
-
+    /**
+     * **НОВЫЙ МЕТОД:** Обрабатывает входящие пакеты и направляет их
+     * соответствующим обработчикам World.
+     * Этот метод вызывается из NetBound.
+     */
     fun onPacket(packet: BedrockPacket) {
         when (packet) {
             is LevelChunkPacket -> {
-                val chunk = Chunk(packet.chunkX, packet.chunkZ, packet.dimension, session)
-                chunk.read(packet.data, packet.subChunksLength)
-                chunks[chunk.hash] = chunk
-
-                safeEmit(EventChunkLoad(session, chunk))
+                Log.d(TAG_WORLD, "Intercepted LevelChunkPacket via onPacket.")
+                handleLevelChunkPacket(packet)
             }
-            is ChunkRadiusUpdatedPacket -> {
-                viewDistance = packet.radius
-                cleanupChunks()
-            }
-            is SubChunkPacket -> handleSubChunk(packet)
-            is ChangeDimensionPacket -> chunks.clear()
             is UpdateBlockPacket -> {
-                if (packet.dataLayer == 0) {
-                    setBlockId(packet.blockPosition.x, packet.blockPosition.y, packet.blockPosition.z, packet.definition.runtimeId)
-                }
+                Log.d(TAG_WORLD, "Intercepted UpdateBlockPacket via onPacket.")
+                handleUpdateBlockPacket(packet)
+            }
+            // Добавьте другие пакеты, если они влияют на состояние мира (например, BlockActorDataPacket)
+            else -> {
+                // Log.d(TAG_WORLD, "Ignoring packet type: ${packet.packetType}")
             }
         }
     }
 
+    /**
+     * Обрабатывает LevelChunkPacket для загрузки данных чанка.
+     *
+     * ВНИМАНИЕ: Это заглушка! Реализация полноценного декодирования ByteBuf packet.data
+     * в Block Runtime IDs - это сложная задача, требующая обращения к деталям Bedrock Protocol
+     * и, возможно, использования внутренних утилит cloudburstmc.
+     * Пока этот метод не будет полностью реализован, World-кэш не будет корректно
+     * отражать состояние мира при загрузке новых чанков.
+     */
+    fun handleLevelChunkPacket(packet: LevelChunkPacket) {
+        val chunkX = packet.chunkX
+        val chunkZ = packet.chunkZ
+        val chunkHash = getChunkHash(chunkX, chunkZ)
 
-    private fun handleLevelChunk(packet: LevelChunkPacket) {
-        val chunk = Chunk(
-            packet.chunkX,
-            packet.chunkZ,
-            packet.dimension,
-            session
-        )
-        chunk.read(packet.data, packet.subChunksLength)
-        chunks[chunk.hash] = chunk
+        Log.d(TAG_WORLD, "Handling LevelChunkPacket for chunk ($chunkX, $chunkZ). Data size: ${packet.data.readableBytes()} bytes")
 
-        eventManager.emit(EventChunkLoad(session, chunk))
+        // Создаем новую карту для блоков этого чанка
+        val newChunkBlocks = ConcurrentHashMap<Vector3i, Int>()
+
+        // TODO: НЕОБХОДИМО РЕАЛИЗОВАТЬ ДЕКОДИРОВАНИЕ packet.data (ByteBuf) ЗДЕСЬ.
+        // Это самый сложный шаг. Вам нужно будет прочитать подчанки, палитры блоков
+        // и конвертировать это в отдельные Block Runtime ID для каждой позиции.
+        // Пока не реализовано, этот чанк будет считаться пустым, если не будет UpdateBlockPacket.
+        // В качестве временной меры, если вы не хотите, чтобы Scaffold ставил блоки в новые чанки,
+        // пока они не будут полностью загружены, вы можете просто ничего не добавлять в newChunkBlocks.
+
+        loadedBlocks[chunkHash] = newChunkBlocks
+        Log.d(TAG_WORLD, "Finished processing LevelChunkPacket for chunk ($chunkX, $chunkZ). (Decoding logic placeholder)")
     }
 
-    private fun handleSubChunk(packet: SubChunkPacket) {
-        val center = packet.centerPosition
-        for (subChunk in packet.subChunks) {
-            if (subChunk.result != SubChunkRequestResult.SUCCESS) continue
-            val pos = subChunk.position.add(center).add(0, 4, 0)
-            getChunk(pos.x, pos.z)?.readSubChunk(pos.y, subChunk.data)
+    /**
+     * Обрабатывает UpdateBlockPacket для обновления отдельного блока в кэше мира.
+     * Этот метод КРАЙНЕ ВАЖЕН для Scaffold, так как он позволяет отслеживать
+     * изменения блоков (установку/разрушение) в реальном времени.
+     */
+    fun handleUpdateBlockPacket(packet: UpdateBlockPacket) {
+        val pos = packet.blockPosition
+        // Получаем Block Runtime ID из BlockDefinition, предоставленного в пакете
+        val newBlockRuntimeId = packet.definition.runtimeId // Используем .runtimeId
+
+        val chunkX = pos.x shr 4
+        val chunkZ = pos.z shr 4
+        val chunkHash = getChunkHash(chunkX, chunkZ)
+
+        val chunkBlocks = loadedBlocks[chunkHash]
+        if (chunkBlocks != null) {
+            chunkBlocks[pos] = newBlockRuntimeId // Обновляем блок в кэше
+            Log.d(TAG_WORLD, "Updated block at $pos to ID $newBlockRuntimeId from UpdateBlockPacket.")
+        } else {
+            // Это может произойти, если UpdateBlockPacket пришел для чанка,
+            // который еще не был загружен LevelChunkPacket (или его обработка не завершена).
+            Log.w(TAG_WORLD, "Received UpdateBlockPacket for unloaded chunk ($chunkX, $chunkZ) at $pos. Cannot update.")
+            // Опционально: можно добавить блок, даже если чанк не "полностью" загружен,
+            // но это может привести к неполным данным о чанке.
+            loadedBlocks.getOrPut(chunkHash) { ConcurrentHashMap() }[pos] = newBlockRuntimeId
+            Log.d(TAG_WORLD, "Added block $pos (ID $newBlockRuntimeId) to newly created chunk entry.")
         }
     }
 
-    private fun cleanupChunks() {
-        if (viewDistance < 0) return
-        val px = floor(session.localPlayer.posX).toInt() shr 4
-        val pz = floor(session.localPlayer.posZ).toInt() shr 4
-        val limit = viewDistance + 1
-
-        chunks.entries.removeIf { (_, chunk) ->
-            val dx = chunk.x - px
-            val dz = chunk.z - pz
-            dx * dx + dz * dz > limit * limit
-        }
+    /**
+     * Генерирует уникальный хеш для пары координат чанка (X, Z).
+     */
+    private fun getChunkHash(chunkX: Int, chunkZ: Int): Long {
+        return chunkX.toLong() and 0xFFFFFFFFL or (chunkZ.toLong() shl 32)
     }
-
-    fun getBlockId(x: Int, y: Int, z: Int): Int {
-        return getChunkAt(x, z)?.getBlock(x and 15, y, z and 15) ?: 0
-    }
-
-    fun setBlockId(x: Int, y: Int, z: Int, id: Int) {
-        getChunkAt(x, z)?.setBlock(x and 15, y, z and 15, id)
-    }
-
-    private fun getChunkAt(x: Int, z: Int): Chunk? {
-        return getChunk(x shr 4, z shr 4)
-    }
-
-    private fun getChunk(x: Int, z: Int): Chunk? {
-        return chunks[Chunk.hash(x, z)]
-    }
-
-    fun getBlockIdAt(vec: Vector3i): Int = getBlockId(vec.x, vec.y, vec.z)
-
-    fun setBlockIdAt(vec: Vector3i, id: Int) = setBlockId(vec.x, vec.y, vec.z, id)
 }
