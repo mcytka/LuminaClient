@@ -175,8 +175,12 @@ class CustomESPView @JvmOverloads constructor(
         Log.d("ESPDebug", "FOV Rad: $fovRad, Scale: $scale, Aspect Ratio: $aspectRatio")
 
         // *** ГЛАВНОЕ ИЗМЕНЕНИЕ: screenX остается БЕЗ инверсии x1 ***
-        val screenX = (x1 / z2) * scale * aspectRatio + screenWidth / 2 // <-- БЕЗ инверсии x1
-        val screenY = screenHeight / 2 - (y1 / z2) * scale // Y остается без изменения, т.к. scale уже по Y
+        val screenX = (x1 / z2) * scale * aspectRatio + screenWidth / 2
+        val screenY = screenHeight / 2 - (y1 / z2) * scale
+
+        // *** НОВЫЙ ОЧЕНЬ ВАЖНЫЙ ЛОГ ***
+        Log.d("ESPDebug", "Raw Calculated screenX: $screenX")
+        // *** КОНЕЦ НОВОГО ЛОГА ***
 
         Log.d("ESPDebug", "Final Screen Coords (X, Y): $screenX, $screenY")
         Log.d("ESPDebug", "--- End worldToScreen Debug ---")
