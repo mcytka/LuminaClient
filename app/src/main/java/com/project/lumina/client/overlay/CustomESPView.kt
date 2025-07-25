@@ -14,6 +14,7 @@ import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
+// import kotlin.math.tan // Больше не нужен, так как scale рассчитывается вручную
 import androidx.compose.ui.geometry.Offset
 import android.util.Log
 
@@ -35,7 +36,7 @@ class CustomESPView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : View(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0) {
+) : View(context, attrs, defStyleAttr) { // <-- ИСПРАВЛЕНИЕ ЗДЕСЬ!
 
     private var espData: ESPData? = null
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -58,7 +59,7 @@ class CustomESPView @JvmOverloads constructor(
         val playerPosition = data.playerPosition
         val playerRotation = data.playerRotation
         val entities = data.entities
-        val fov = data.fov
+        // val fov = data.fov // FOV больше не используется напрямую в onDraw для передачи в worldToScreen
 
         val screenWidth = width.toFloat()
         val screenHeight = height.toFloat()
@@ -74,6 +75,7 @@ class CustomESPView @JvmOverloads constructor(
                 playerPitch = playerRotation.x,
                 screenWidth = screenWidth,
                 screenHeight = screenHeight
+                // fov больше не передается в worldToScreen, так как он там не используется
             )
 
             screenPos?.let { // Проверяем, что screenPos не null (то есть сущность видна)
@@ -122,7 +124,7 @@ class CustomESPView @JvmOverloads constructor(
         playerPitch: Float,
         screenWidth: Float,
         screenHeight: Float
-        // FOV больше не используется для расчета масштаба здесь
+        // FOV удален из сигнатуры, так как он не используется для расчетов здесь
     ): Offset? {
         val cameraHeightOffset = 1.62f // Высота глаз игрока над ногами в Minecraft
         val playerCameraY = playerPos.y + cameraHeightOffset
@@ -164,7 +166,6 @@ class CustomESPView @JvmOverloads constructor(
         }
 
         // *** УТОЧНЕННЫЕ Эмпирические коэффициенты масштаба ***
-        // Немного скорректированы для лучшей точности на основе ваших последних скриншотов
         val adjustedXScale = 265f 
         val adjustedYScale = 35.0f 
         // ***************************************************
@@ -172,8 +173,7 @@ class CustomESPView @JvmOverloads constructor(
         val screenX = (-x1 / z2) * adjustedXScale + screenWidth / 2 
         val screenY = screenHeight / 2 - (y1 / z2) * adjustedYScale
 
-        // *** НОВОЕ: Проверка нахождения на экране после преобразования ***
-        // Добавляем небольшой отступ, чтобы боксы не обрезались прямо на краю
+        // *** Проверка нахождения на экране после преобразования ***
         val margin = 50f 
         if (screenX < -margin || screenX > screenWidth + margin ||
             screenY < -margin || screenY > screenHeight + margin) {
@@ -196,12 +196,8 @@ class CustomESPView @JvmOverloads constructor(
         color: Int,
         username: String?
     ) {
-        // Коэффициент масштабирования бокса в зависимости от расстояния
-        // Возможно, потребуется корректировка этого значения (1000f)
-        // Увеличим базовый размер для лучшей видимости на дальних расстояниях
         val baseScale = 1200f 
         val scaleFactor = baseScale / distance.coerceAtLeast(1f) 
-        // Верхние лимиты размера бокса могут быть скорректированы для более крупного отображения
         val screenWidthPx = (entityWidth * scaleFactor).coerceIn(20f, 150f) 
         val screenHeightPx = (entityHeight * scaleFactor).coerceIn(40f, 300f)
 
@@ -210,8 +206,8 @@ class CustomESPView @JvmOverloads constructor(
 
         paint.color = color
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 3f // Увеличим толщину линии
-        paint.alpha = (0.9f * 255).toInt() // Увеличим непрозрачность
+        paint.strokeWidth = 3f 
+        paint.alpha = (0.9f * 255).toInt() 
         canvas.drawRect(
             position.x - screenWidthPx / 2,
             rectTop,
@@ -220,40 +216,39 @@ class CustomESPView @JvmOverloads constructor(
             paint
         )
 
-        // Дополнительная точка в центре для отладки
         paint.style = Paint.Style.FILL
         paint.alpha = 255
         paint.color = AndroidColor.WHITE
         canvas.drawCircle(
             position.x,
             position.y,
-            5f, // Увеличим размер точки
+            5f, 
             paint
         )
 
         // Отрисовка никнейма
         username?.let {
             paint.color = AndroidColor.WHITE
-            paint.textSize = 35f // Увеличим размер текста для никнейма
+            paint.textSize = 35f 
             paint.textAlign = Paint.Align.CENTER
             paint.alpha = 255
             canvas.drawText(
-                it, // Сам никнейм
+                it, 
                 position.x,
-                rectTop - 45, // Располагаем никнейм над расстоянием
+                rectTop - 45, 
                 paint
             )
         }
 
         // Отрисовка расстояния
         paint.color = AndroidColor.WHITE
-        paint.textSize = 35f // Увеличим размер текста для расстояния
+        paint.textSize = 35f 
         paint.textAlign = Paint.Align.CENTER
         paint.alpha = 255
         canvas.drawText(
             "%.1fm".format(distance),
             position.x,
-            rectTop - 15, // Располагаем текст над прямоугольником
+            rectTop - 15, 
             paint
         )
     }
