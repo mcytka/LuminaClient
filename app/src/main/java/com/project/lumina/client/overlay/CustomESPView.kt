@@ -132,7 +132,10 @@ class CustomESPView @JvmOverloads constructor(
         val (_, entityTotalHeight) = getEntitySize(entity)
         val entityCenterY = entity.vec3Position.y + (entityTotalHeight / 2)
 
-        // *** ИЗМЕНЕНИЕ 1: Возвращаем dz к изначальному виду: entity.z - player.z.
+        // Добавляем логи для screenWidth и screenHeight
+        Log.d("ESPDebug", "Screen Width: $screenWidth, Screen Height: $screenHeight") // <-- НОВАЯ СТРОКА
+
+        // 1. Возвращаем dz к изначальному виду: entity.z - player.z.
         val dx = entity.vec3Position.x - playerPos.x
         val dy = entityCenterY - playerCameraY
         val dz = entity.vec3Position.z - playerPos.z // Возвращаем оригинальное вычисление dz
@@ -140,17 +143,17 @@ class CustomESPView @JvmOverloads constructor(
         Log.d("ESPDebug", "--- worldToScreen Debug ---")
         Log.d("ESPDebug", "Player Pos: ${playerPos.x}, ${playerPos.y}, ${playerPos.z}")
         Log.d("ESPDebug", "Entity Pos: ${entity.vec3Position.x}, ${entity.vec3Position.y}, ${entity.vec3Position.z}")
-        Log.d("ESPDebug", "Relative (dx, dy, dz - original): $dx, $dy, $dz") // Обновленный лог
+        Log.d("ESPDebug", "Relative (dx, dy, dz - original): $dx, $dy, $dz")
 
         Log.d("ESPDebug", "Player Yaw/Pitch (raw deg): $playerYaw, $playerPitch")
 
-        // *** ИЗМЕНЕНИЕ 2: Сохраняем инверсию Yaw.
+        // 2. Сохраняем инверсию Yaw.
         val yawRad = Math.toRadians(-playerYaw.toDouble()).toFloat()
 
-        // *** ИЗМЕНЕНИЕ 3: Инвертируем Pitch. Это должно исправить проблему с вертикальным смещением.
+        // 3. Инвертируем Pitch. Это должно исправить проблему с вертикальным смещением.
         val pitchRad = Math.toRadians(-playerPitch.toDouble()).toFloat() // Инвертируем Pitch
 
-        Log.d("ESPDebug", "Yaw/Pitch (rad, yaw inv, pitch inv): $yawRad, $pitchRad") // Обновленный лог
+        Log.d("ESPDebug", "Yaw/Pitch (rad, yaw inv, pitch inv): $yawRad, $pitchRad")
 
         // Выполняем вращение относительно Y (Yaw), затем относительно X (Pitch)
         val x1 = dx * cos(yawRad) - dz * sin(yawRad)
@@ -163,20 +166,17 @@ class CustomESPView @JvmOverloads constructor(
 
         Log.d("ESPDebug", "After Pitch Rotation (y1, z2): $y1, $z2")
 
-        // Это условие теперь должно быть более строгим для задних объектов.
-        // Если z2 положительный, объект перед камерой. Если отрицательный - за камерой.
-        if (z2 < 0.1f) { // Значение 0.1f может быть изменено, если объекты слишком быстро исчезают.
+        if (z2 < 0.1f) {
             Log.d("ESPDebug", "Entity behind camera (z2: $z2) or too close to clipping plane")
             return null
         }
 
-        val fovRad = Math.toRadians(fov.toDouble()).toFloat() // fov должен быть 60.0f
+        val fovRad = Math.toRadians(fov.toDouble()).toFloat()
         val scale = (screenWidth / 2) / tan(fovRad / 2)
 
         Log.d("ESPDebug", "FOV Rad: $fovRad, Scale: $scale")
 
-        // *** ИЗМЕНЕНИЕ 4: Инвертируем x1 при расчете screenX, чтобы исправить горизонтальное "отзеркаливание".
-        val screenX = (-x1 / z2) * scale + screenWidth / 2 // Инвертируем x1
+        val screenX = (x1 / z2) * scale + screenWidth / 2
         val screenY = screenHeight / 2 - (y1 / z2) * scale
 
         Log.d("ESPDebug", "Final Screen Coords (X, Y): $screenX, $screenY")
