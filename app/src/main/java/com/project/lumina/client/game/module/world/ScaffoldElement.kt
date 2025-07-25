@@ -1,248 +1,186 @@
 package com.project.lumina.client.game.module.world
 
-import com.project.lumina.client.R
-import com.project.lumina.client.constructors.Element
-import com.project.lumina.client.constructors.CheatCategory
+import android.util.Log
+import com.project.lumina.client.constructors.Module
+import com.project.lumina.client.constructors.NetBound
 import com.project.lumina.client.game.InterceptablePacket
-
-// Импорты для Bedrock Protocol
-import org.cloudburstmc.math.vector.Vector2f
+import com.project.lumina.client.game.constructors.Category
+import com.project.lumina.client.game.event.EventPacketInbound
+import com.project.lumina.client.game.event.EventTick
+import com.project.lumina.client.game.event.Listen
+import com.project.lumina.client.game.inventory.ItemData
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
-import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
-import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
-import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
-import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
-// org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction // <--- ЭТОТ ИМПОРТ БОЛЬШЕ НЕ НУЖЕН НАПРЯМУЮ
+import org.cloudburstmc.protocol.bedrock.data.BlockFace // Импорт BlockFace из CloudburstMC
+import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket
+import org.cloudburstmc.protocol.bedrock.packet.BlockPlacePacket // Используем BlockPlacePacket
+import org.cloudburstmc.protocol.bedrock.packet.PlayerActionPacket // Для смены слота
+import org.cloudburstmc.protocol.bedrock.packet.TextPacket
+import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemUseAction
 
 import kotlin.math.floor
-import android.util.Log // <--- ВАЖНЫЙ ИМПОРТ ДЛЯ ЛОГОВ
+import kotlin.math.abs
+import kotlin.math.roundToInt // Для округления углов
 
-class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : Element(
-    name = "Scaffold",
-    category = CheatCategory.World,
-    iconResId = iconResId,
-    displayNameResId = R.string.module_scaffold_display_name
-) {
+class ScaffoldElement(val session: NetBound) : Module("Scaffold", "Automatically places blocks under your feet.", Category.WORLD) {
 
-    private var lastPlaceTime: Long = 0
-    private val placeDelay: Long = 100 // 100ms между установками
-
-    // Константа для тега логирования
-    private val TAG = "LuminaScaffold"
-
-    override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
-        if (!isEnabled) return
-
-        val packet = interceptablePacket.packet
-
-        if (packet is PlayerAuthInputPacket) {
-            val playerPos = packet.position ?: return
-            val motion = packet.motion ?: Vector2f.ZERO
-            val headYaw = packet.rotation?.y ?: 0f
-            val headPitch = packet.rotation?.x ?: 0f
-            val inputData = packet.inputData
-
-            // Логируем основные параметры игрока
-            Log.d(TAG, "PlayerAuthInputPacket received. Pos=${playerPos.x}, ${playerPos.y}, ${playerPos.z}, Yaw=$headYaw, Pitch=$headPitch")
-
-            val predictedX = playerPos.x + motion.x
-            val predictedY = playerPos.y
-            val predictedZ = playerPos.z + motion.y // motion.y здесь относится к Z в Bedrock (YZ plane for horizontal motion)
-
-            val isMovingForward = inputData.contains(PlayerAuthInputData.UP) || (motion.x != 0f || motion.y != 0f)
-            val isJumping = inputData.contains(PlayerAuthInputData.JUMPING)
-
-            var targetInfo: Pair<Vector3i, Int>? = null
-
-            // Логика определения режима (Towering/Bridging)
-            if (isJumping && headPitch < -60) {
-                targetInfo = calculateToweringTarget(predictedX, predictedY, predictedZ)
-                Log.d(TAG, "Mode: Towering. Calculated target: $targetInfo")
-            } else if (isMovingForward) {
-                targetInfo = calculateBridgingTarget(predictedX, predictedY, predictedZ, headYaw)
-                Log.d(TAG, "Mode: Bridging. Calculated target: $targetInfo")
-            } else {
-                Log.d(TAG, "Mode: Idle/No specific Scaffold action.")
-            }
-
-            if (targetInfo != null) {
-                val (blockPos, blockFace) = targetInfo
-                Log.d(TAG, "Target Block Position: $blockPos, Face: $blockFace")
-
-                // Проверяем, является ли целевой блок воздухом
-                if (isAir(blockPos)) {
-                    Log.d(TAG, "Block at $blockPos is confirmed as Air. Looking for block in hotbar.")
-                    val blockSlot = findBlockInHotbar()
-                    if (blockSlot != -1) {
-                        Log.d(TAG, "Block found in hotbar at slot: $blockSlot.")
-                        val now = System.currentTimeMillis()
-                        if (now - lastPlaceTime > placeDelay) {
-                            Log.d(TAG, "Place delay met (${now - lastPlaceTime}ms). Attempting to place block at $blockPos.")
-                            placeBlock(blockPos, blockFace, blockSlot, playerPos, headYaw, headPitch)
-                            lastPlaceTime = now
-                        } else {
-                            Log.d(TAG, "Place delay not met. Remaining: ${placeDelay - (now - lastPlaceTime)}ms.")
-                        }
-                    } else {
-                        Log.w(TAG, "No suitable block item (getBlockDefinition() != null) found in hotbar.")
-                    }
-                } else {
-                    Log.i(TAG, "Block at $blockPos is NOT Air (Block ID is not 0). Skipping placement.")
+    // Вспомогательная функция для получения ItemData из инвентаря.
+    private fun getBlockItemInHotbar(): ItemData? {
+        for (i in 0..8) {
+            val item = session.localPlayer.inventory.getItemInHotbar(i)
+            if (item != null && item.definition.isBlock && item.count > 0) {
+                if (item.definition.runtimeId != 0) { // Простая проверка на не-воздух
+                    return item
                 }
             }
         }
+        session.displayClientMessage("§c[Scaffold] No suitable block found in hotbar!", TextPacket.Type.CHAT)
+        return null
     }
 
-    private fun calculateToweringTarget(x: Float, y: Float, z: Float): Pair<Vector3i, Int>? {
-        val targetBlockY = floor(y - 1.0).toInt()
-        val blockPos = Vector3i.from(floor(x).toInt(), targetBlockY, floor(z).toInt())
-
-        if (!isAir(blockPos)) {
-            Log.d(TAG, "Towering target $blockPos is not air.")
-            return null
+    // Вспомогательная функция для переключения слота хотбара
+    private fun selectHotbarSlot(slot: Int) {
+        if (session.localPlayer.inventory.selectedHotbarSlot != slot) {
+            val playerActionPacket = PlayerActionPacket().apply {
+                this.runtimeEntityId = session.localPlayer.runtimeEntityId
+                this.position = Vector3i.from(session.localPlayer.vec3PositionFeet.floor())
+                this.face = 0
+                this.action = PlayerActionPacket.Action.CHANGE_SLOT
+                this.resultPosition = Vector3i.ZERO
+                this.resultBlockRuntimeId = 0
+                this.int2 = slot
+            }
+            session.serverBound(playerActionPacket)
+            Log.d("Scaffold", "Switched to hotbar slot $slot")
+            session.localPlayer.inventory.selectedHotbarSlot = slot
         }
-        val groundBlockPos = Vector3i.from(blockPos.x, blockPos.y - 1, blockPos.z)
-        if (isAir(groundBlockPos)) {
-            Log.d(TAG, "Towering: Ground block $groundBlockPos is air. Cannot place.")
-            return null
-        }
-        
-        return Pair(blockPos, 1) // 1 = TOP_FACE
     }
 
-    private fun calculateBridgingTarget(x: Float, y: Float, z: Float, yaw: Float): Pair<Vector3i, Int>? {
-        val normalizedYaw = ((yaw % 360) + 360) % 360
-        var directionX = 0f
-        var directionZ = 0f
 
-        when {
-            normalizedYaw >= 315 || normalizedYaw < 45 -> directionZ = 1f // South (Z+)
-            normalizedYaw >= 45 && normalizedYaw < 135 -> directionX = -1f // West (X-)
-            normalizedYaw >= 135 && normalizedYaw < 225 -> directionZ = -1f // North (Z-)
-            normalizedYaw >= 225 && normalizedYaw < 315 -> directionX = 1f // East (X+)
+    @Listen
+    fun onTick(event: EventTick) {
+        if (!isEnabled) return
+
+        val playerPos = session.localPlayer.vec3PositionFeet
+        val targetBlockPos = Vector3i.from(
+            floor(playerPos.x).toInt(),
+            floor(playerPos.y - 1).toInt(), // Позиция, куда мы хотим поставить блок (должна быть воздухом)
+            floor(playerPos.z).toInt()
+        )
+
+        // Проверяем, является ли целевая позиция воздухом в нашем локальном кэше
+        if (session.world.isAir(targetBlockPos)) {
+            Log.d("Scaffold", "Target block at $targetBlockPos is air (ID: ${session.world.getBlockIdAt(targetBlockPos)})")
+
+            val blockToPlace = getBlockItemInHotbar()
+            if (blockToPlace == null) {
+                Log.w("Scaffold", "No block to place found in hotbar.")
+                return
+            }
+
+            // Находим опорный блок и грань для установки, учитывая yaw игрока
+            val (clickedBlockPos, clickedFace) = findPlacementReference(targetBlockPos, session.localPlayer.vec3Rotation.y)
+
+            if (clickedBlockPos != null && clickedFace != null) {
+                val hotbarSlot = session.localPlayer.inventory.getHotbarSlotForItem(blockToPlace)
+                if (hotbarSlot != -1) {
+                    selectHotbarSlot(hotbarSlot)
+                } else {
+                    session.displayClientMessage("§c[Scaffold] Block not in hotbar!", TextPacket.Type.CHAT)
+                    return
+                }
+
+                Log.d("Scaffold", "Attempting to place block at $targetBlockPos by clicking on $clickedBlockPos, face $clickedFace")
+
+                val placePacket = BlockPlacePacket().apply {
+                    this.blockPosition = clickedBlockPos // ПОЗИЦИЯ ТВЕРДОГО ОПОРНОГО БЛОКА
+                    this.face = clickedFace.id.toByte() // ГРАНЬ ТВЕРДОГО ОПОРНОГО БЛОКА
+                    this.hotbarSlot = session.localPlayer.inventory.selectedHotbarSlot.toByte()
+                    this.heldItem = blockToPlace
+                    this.playerPosition = playerPos
+                    this.clickPosition = Vector3f.from(0.5f, 0.5f, 0.5f) // Центр грани
+                    this.runtimeBlockId = blockToPlace.definition.runtimeId
+                    this.action = ItemUseAction.PLACE
+                }
+                session.serverBound(placePacket)
+                session.displayClientMessage("§a[Scaffold] Placed block at $targetBlockPos", TextPacket.Type.CHAT)
+
+                // Опционально: Обновить локальный кэш мира немедленно.
+                // session.world.setBlockIdAt(targetBlockPos, blockToPlace.definition.runtimeId)
+
+            } else {
+                Log.w("Scaffold", "Could not find a solid reference block for placement at $targetBlockPos.")
+                session.displayClientMessage("§e[Scaffold] No solid block to place against.", TextPacket.Type.CHAT)
+            }
+        } else {
+            Log.d("Scaffold", "Target block at $targetBlockPos is NOT air (ID: ${session.world.getBlockIdAt(targetBlockPos)}), no action.")
         }
-
-        val targetBlockX = floor(x + directionX).toInt()
-        val targetBlockY = floor(y - 1.0).toInt()
-        val targetBlockZ = floor(z + directionZ).toInt()
-        val blockPos = Vector3i.from(targetBlockX, targetBlockY, targetBlockZ)
-
-        if (!isAir(blockPos)) {
-            Log.d(TAG, "Bridging target $blockPos is not air.")
-            return null
-        }
-        val groundBlockPos = Vector3i.from(blockPos.x, blockPos.y - 1, blockPos.z)
-        if (isAir(groundBlockPos)) {
-            Log.d(TAG, "Bridging: Ground block $groundBlockPos is air. Cannot place.")
-            return null
-        }
-
-        val blockFace = 1 // TOP_FACE
-        return Pair(blockPos, blockFace)
     }
+
 
     /**
-     * Используем session.world.getBlockIdAt.
-     * ЭТА ФУНКЦИЯ КРИТИЧЕСКИ ЗАВИСИТ ОТ ТОГО, НА СКОЛЬКО ТОЧНО session.world
-     * ОТСЛЕЖИВАЕТ СОСТОЯНИЕ МИРА СЕРВЕРА (через LevelChunkPacket, UpdateBlockPacket и т.д.)
+     * Ищет твердый опорный блок (на который кликаем) и грань для размещения нового блока.
+     * Опорный блок должен быть непосредственно под игроком, а грань определяется направлением взгляда.
+     *
+     * @param targetPos Позиция, куда мы хотим поставить новый блок (должна быть воздухом).
+     * @param playerYaw Угол поворота игрока по горизонтали (yaw).
+     * @return Pair<Vector3i, BlockFace>? где первый элемент - позиция опорного блока,
+     * второй - грань клика. Null, если не найдено.
      */
-    private fun isAir(position: Vector3i): Boolean {
-        return try {
-            val blockId = session.world.getBlockIdAt(position)
-            val result = blockId == 0 // В Bedrock Protocol 0 обычно означает воздух
-            Log.d(TAG, "isAir($position): Block ID = $blockId, Is Air = $result")
-            result
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking isAir for $position: ${e.message}", e)
-            true // В случае ошибки считаем воздухом, чтобы попытаться поставить. Это может быть некорректно.
+    private fun findPlacementReference(targetPos: Vector3i, playerYaw: Float): Pair<Vector3i, BlockFace>? {
+        // Позиция блока, на котором стоит игрок (это наш основной кандидат на опорный блок)
+        val standingBlockPos = Vector3i.from(targetPos.x, targetPos.y, targetPos.z) // Это и есть targetPos из onTick
+        // Нам нужен блок, на котором игрок *действительно* стоит, а не где должен появиться новый блок.
+        // То есть, блок под ногами игрока, который является твердым.
+        // Если playerPos.y это высота глаз, то playerPos.y - 1 это блок ног, а playerPos.y - 2 это блок под ногами.
+        // Поэтому опорный блок - это floor(playerY - 1).
+
+        val referenceBlockPos = Vector3i.from(
+            floor(session.localPlayer.vec3PositionFeet.x).toInt(),
+            floor(session.localPlayer.vec3PositionFeet.y - 1).toInt(), // Блок, на котором стоит игрок
+            floor(session.localPlayer.vec3PositionFeet.z).toInt()
+        )
+
+        // Проверяем, что блок под ногами игрока действительно твердый
+        if (session.world.isAir(referenceBlockPos)) {
+            Log.w("ScaffoldDebug", "Player is standing on air at $referenceBlockPos. Cannot place block without solid ground.")
+            // Если игрок в воздухе, Scaffold не может работать по этой логике.
+            // Возможно, здесь нужна дополнительная логика для прыжков или спуска.
+            return null
         }
+
+        // Определяем грань, на которую кликаем, основываясь на угле поворота игрока (yaw)
+        // Minecraft Yaw: -180 (North) до 180 (North)
+        // 0 = South, 90 = West, 180/-180 = North, -90 = East
+
+        val roundedYaw = (playerYaw % 360 + 360) % 360 // Нормализуем yaw от 0 до 360
+        val cardinalDirection = when {
+            roundedYaw >= 45 && roundedYaw < 135 -> BlockFace.WEST // Игрок смотрит на запад, ставим на восток (кликаем на восточную грань блока под ногами)
+            roundedYaw >= 135 && roundedYaw < 225 -> BlockFace.NORTH // Игрок смотрит на север, ставим на юг (кликаем на южную грань)
+            roundedYaw >= 225 && roundedYaw < 315 -> BlockFace.EAST // Игрок смотрит на восток, ставим на запад (кликаем на западную грань)
+            else -> BlockFace.SOUTH // Игрок смотрит на юг, ставим на север (кликаем на северную грань)
+        }
+
+        // Логика: если игрок смотрит на SOUTH, он хочет поставить блок вперед (на NORTH от себя).
+        // Поэтому он кликает на NORTH грань блока, на котором стоит.
+        val faceToClick = when (cardinalDirection) {
+            BlockFace.NORTH -> BlockFace.SOUTH // Если смотрим на NORTH, кликаем на SOUTH грань опорного блока
+            BlockFace.SOUTH -> BlockFace.NORTH // Если смотрим на SOUTH, кликаем на NORTH грань опорного блока
+            BlockFace.EAST -> BlockFace.WEST   // Если смотрим на EAST, кликаем на WEST грань опорного блока
+            BlockFace.WEST -> BlockFace.EAST   // Если смотрим на WEST, кликаем на EAST грань опорного блока
+            else -> BlockFace.UP // Fallback, если что-то пошло не так, или для особых случаев (например, если игрок смотрит прямо вверх/вниз)
+        }
+
+
+        Log.d("ScaffoldDebug", "Player Yaw: $playerYaw, Rounded Yaw: $roundedYaw, Detected Face to Click: $faceToClick")
+        return Pair(referenceBlockPos, faceToClick)
     }
 
-    /**
-     * Используем session.localPlayer.inventory для поиска блока в хотбаре.
-     * Убедитесь, что session.localPlayer.inventory корректно отслеживает инвентарь игрока.
-     */
-    private fun findBlockInHotbar(): Int {
-        val slot = try {
-            // Ищем предмет, который не является null/AIR и имеет BlockDefinition (т.е. является блоком)
-            session.localPlayer.inventory.searchForItemInHotbar { itemData ->
-                itemData != null && !itemData.isNull() && itemData.getBlockDefinition() != null
-            } ?: -1 // Если не найден, возвращаем -1
-        } catch (e: Exception) {
-            Log.e(TAG, "Error finding block in hotbar: ${e.message}", e)
-            -1 // Возвращаем -1 в случае ошибки
-        }
-        Log.d(TAG, "findBlockInHotbar result: $slot")
-        return slot
-    }
-
-    /**
-     * Отправляет InventoryTransactionPacket типа ITEM_USE для размещения блока.
-     */
-    private fun placeBlock(
-        blockPos: Vector3i,
-        blockFace: Int,
-        hotbarSlot: Int,
-        playerPos: Vector3f,
-        headYaw: Float,
-        headPitch: Float
-    ) {
-        val itemInHand: ItemData = try {
-            session.localPlayer.inventory.content[hotbarSlot] as ItemData
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting item from hotbar slot $hotbarSlot for placement: ${e.message}", e)
-            ItemData.AIR
-        }
-
-        // Проверяем, что предмет является размещаемым блоком
-        if (itemInHand.isNull() || itemInHand.getBlockDefinition() == null) {
-            Log.w(TAG, "Attempted to place null/AIR item or non-block item. Aborting block placement.")
-            return
-        }
-
-        val clickPosition = calculateClickPosition(blockPos, blockFace)
-        Log.d(TAG, "Preparing to place block: Target=$blockPos, Face=$blockFace, Item=${itemInHand.getDefinition().getIdentifier()}:${itemInHand.getDamage()}, ClickPos=$clickPosition")
-
-        // Создаем главный пакет InventoryTransactionPacket
-        val transactionPacket = InventoryTransactionPacket().apply {
-            this.transactionType = InventoryTransactionType.ITEM_USE // Указываем тип транзакции
-
-            // <--- КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Напрямую присваиваем поля пакету!
-            this.blockPosition = blockPos
-            this.blockFace = blockFace
-            this.hotbarSlot = hotbarSlot
-            this.itemInHand = itemInHand
-            this.playerPosition = playerPos
-            this.clickPosition = clickPosition
-            this.clientInteractPrediction = org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction.PredictedResult.SUCCESS
-            this.triggerType = org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction.TriggerType.PLAYER_INPUT
-            this.blockDefinition = itemInHand.getBlockDefinition() // Передаем BlockDefinition предмета
-            this.headPosition = Vector3f.from(playerPos.x, playerPos.y + 1.62f, playerPos.z) // Пример: можно использовать headPosition
-            
-            // Важно: для ITEM_USE список actions обычно должен быть пустым.
-            this.actions.clear() // Убеждаемся, что список действий пуст
-        }
-
-        // Отправляем пакет
-        session.serverBound(transactionPacket)
-        Log.d(TAG, "InventoryTransactionPacket (ITEM_USE) sent for block $blockPos.")
-    }
-
-    private fun calculateClickPosition(blockPos: Vector3i, blockFace: Int): Vector3f {
-        val x = blockPos.x.toFloat()
-        val y = blockPos.y.toFloat()
-        val z = blockPos.z.toFloat()
-
-        return when (blockFace) {
-            0 -> Vector3f.from(x + 0.5f, y, z + 0.5f) // Bottom (Y-)
-            1 -> Vector3f.from(x + 0.5f, y + 1.0f, z + 0.5f) // Top (Y+)
-            2 -> Vector3f.from(x + 0.5f, y + 0.5f, z) // North (Z-)
-            3 -> Vector3f.from(x + 0.5f, y + 0.5f, z + 1.0f) // South (Z+)
-            4 -> Vector3f.from(x, y + 0.5f, z + 0.5f) // West (X-)
-            5 -> Vector3f.from(x + 1.0f, y + 0.5f, z + 0.5f) // East (X+)
-            else -> Vector3f.from(x + 0.5f, y + 0.5f, z + 0.5f) // Default to center
-        }
+    // Обработка пакетов (если нужно)
+    @Listen
+    fun onPacketInbound(event: EventPacketInbound) {
+        if (!isEnabled) return
+        // Если вы хотите, чтобы Scaffold реагировал на какие-то пакеты, добавьте логику здесь.
     }
 }
