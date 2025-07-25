@@ -390,3 +390,4 @@ class CustomESPView @JvmOverloads constructor(
         canvas.drawText(info, textX, textY, outlinePaint)
         canvas.drawText(info, textX, textY, textPaint)
     }
+}
