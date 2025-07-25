@@ -124,7 +124,7 @@ class CustomESPView @JvmOverloads constructor(
         playerPitch: Float,
         screenWidth: Float,
         screenHeight: Float,
-        fov: Float
+        fov: Float // Это теперь будет интерпретироваться как ВЕРТИКАЛЬНЫЙ FOV
     ): Offset? {
         val cameraHeightOffset = 1.62f // Высота глаз игрока над ногами в Minecraft
         val playerCameraY = playerPos.y + cameraHeightOffset
@@ -132,10 +132,8 @@ class CustomESPView @JvmOverloads constructor(
         val (_, entityTotalHeight) = getEntitySize(entity)
         val entityCenterY = entity.vec3Position.y + (entityTotalHeight / 2)
 
-        // Добавляем логи для screenWidth и screenHeight
-        Log.d("ESPDebug", "Screen Width: $screenWidth, Screen Height: $screenHeight") // <-- НОВАЯ СТРОКА
+        Log.d("ESPDebug", "Screen Width: $screenWidth, Screen Height: $screenHeight") // <-- Лог размера экрана
 
-        // 1. Возвращаем dz к изначальному виду: entity.z - player.z.
         val dx = entity.vec3Position.x - playerPos.x
         val dy = entityCenterY - playerCameraY
         val dz = entity.vec3Position.z - playerPos.z // Возвращаем оригинальное вычисление dz
@@ -147,15 +145,11 @@ class CustomESPView @JvmOverloads constructor(
 
         Log.d("ESPDebug", "Player Yaw/Pitch (raw deg): $playerYaw, $playerPitch")
 
-        // 2. Сохраняем инверсию Yaw.
         val yawRad = Math.toRadians(-playerYaw.toDouble()).toFloat()
-
-        // 3. Инвертируем Pitch. Это должно исправить проблему с вертикальным смещением.
-        val pitchRad = Math.toRadians(-playerPitch.toDouble()).toFloat() // Инвертируем Pitch
+        val pitchRad = Math.toRadians(-playerPitch.toDouble()).toFloat()
 
         Log.d("ESPDebug", "Yaw/Pitch (rad, yaw inv, pitch inv): $yawRad, $pitchRad")
 
-        // Выполняем вращение относительно Y (Yaw), затем относительно X (Pitch)
         val x1 = dx * cos(yawRad) - dz * sin(yawRad)
         val z1 = dx * sin(yawRad) + dz * cos(yawRad)
 
@@ -172,12 +166,18 @@ class CustomESPView @JvmOverloads constructor(
         }
 
         val fovRad = Math.toRadians(fov.toDouble()).toFloat()
-        val scale = (screenWidth / 2) / tan(fovRad / 2)
+        
+        // *** ГЛАВНОЕ ИЗМЕНЕНИЕ: Расчет scale на основе ВЕРТИКАЛЬНОГО FOV и ВЫСОТЫ ЭКРАНА ***
+        val scale = (screenHeight / 2) / tan(fovRad / 2) // <-- ИЗМЕНЕНО!
 
-        Log.d("ESPDebug", "FOV Rad: $fovRad, Scale: $scale")
+        val aspectRatio = screenWidth / screenHeight // Расчет аспектного соотношения
+        
+        Log.d("ESPDebug", "Debug Scale Calculation: fov: $fov, fovRad: $fovRad, tanHalfFov: ${tan(fovRad / 2)}, screenHeight/2: ${screenHeight / 2}, calculated Scale: $scale")
+        Log.d("ESPDebug", "FOV Rad: $fovRad, Scale: $scale, Aspect Ratio: $aspectRatio") // Добавили логирование Aspect Ratio
 
-        val screenX = (x1 / z2) * scale + screenWidth / 2
-        val screenY = screenHeight / 2 - (y1 / z2) * scale
+        // *** ИЗМЕНЕНИЕ: Применение аспектного соотношения к screenX ***
+        val screenX = (x1 / z2) * scale * aspectRatio + screenWidth / 2 // <-- ИЗМЕНЕНО!
+        val screenY = screenHeight / 2 - (y1 / z2) * scale // Y остается без изменения, т.к. scale уже по Y
 
         Log.d("ESPDebug", "Final Screen Coords (X, Y): $screenX, $screenY")
         Log.d("ESPDebug", "--- End worldToScreen Debug ---")
