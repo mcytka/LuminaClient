@@ -145,12 +145,12 @@ class CustomESPView @JvmOverloads constructor(
 
         Log.d("ESPDebug", "Player Yaw/Pitch (raw deg): $playerYaw, $playerPitch")
 
-        // *** ГЛАВНОЕ ИЗМЕНЕНИЕ: Убираем инверсию Yaw и Pitch ***
-        val yawRad = Math.toRadians(playerYaw.toDouble()).toFloat() // Без инверсии
-        val pitchRad = Math.toRadians(playerPitch.toDouble()).toFloat() // Без инверсии
+        // *** ГЛАВНОЕ ИЗМЕНЕНИЕ: Возвращаем инверсию Yaw и Pitch ***
+        val yawRad = Math.toRadians(-playerYaw.toDouble()).toFloat() // ВОЗВРАЩАЕМ ИНВЕРСИЮ
+        val pitchRad = Math.toRadians(-playerPitch.toDouble()).toFloat() // ВОЗВРАЩАЕМ ИНВЕРСИЮ
         // *** КОНЕЦ ИЗМЕНЕНИЯ ***
 
-        Log.d("ESPDebug", "Yaw/Pitch (rad, NO inv): $yawRad, $pitchRad") // Обновленный лог
+        Log.d("ESPDebug", "Yaw/Pitch (rad, WITH inv): $yawRad, $pitchRad") // Обновленный лог
 
         val x1 = dx * cos(yawRad) - dz * sin(yawRad)
         val z1 = dx * sin(yawRad) + dz * cos(yawRad)
@@ -174,9 +174,9 @@ class CustomESPView @JvmOverloads constructor(
         Log.d("ESPDebug", "Debug Scale Calculation: fov: $fov, fovRad: $fovRad, tanHalfFov: ${tan(fovRad / 2)}, screenHeight/2: ${screenHeight / 2}, calculated Scale: $scale")
         Log.d("ESPDebug", "FOV Rad: $fovRad, Scale: $scale, Aspect Ratio: $aspectRatio")
 
-        // *** ГЛАВНОЕ ИЗМЕНЕНИЕ: Убираем инверсию x1 при расчете screenX ***
-        val screenX = (x1 / z2) * scale * aspectRatio + screenWidth / 2 // <-- ИЗМЕНЕНО: БЕЗ инверсии -x1
-        val screenY = screenHeight / 2 - (y1 / z2) * scale
+        // *** ГЛАВНОЕ ИЗМЕНЕНИЕ: screenX остается БЕЗ инверсии x1 ***
+        val screenX = (x1 / z2) * scale * aspectRatio + screenWidth / 2 // <-- БЕЗ инверсии x1
+        val screenY = screenHeight / 2 - (y1 / z2) * scale // Y остается без изменения, т.к. scale уже по Y
 
         Log.d("ESPDebug", "Final Screen Coords (X, Y): $screenX, $screenY")
         Log.d("ESPDebug", "--- End worldToScreen Debug ---")
