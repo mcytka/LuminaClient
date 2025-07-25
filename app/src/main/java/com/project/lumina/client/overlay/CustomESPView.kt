@@ -14,7 +14,7 @@ import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
-// import kotlin.math.tan // Больше не нужен, так как scale рассчитывается вручную
+import kotlin.math.tan // Теперь будем использовать tan
 import androidx.compose.ui.geometry.Offset
 import android.util.Log
 
@@ -29,14 +29,14 @@ data class ESPData(
     val playerPosition: Vector3f,
     val playerRotation: Vector3f,
     val entities: List<ESPRenderEntity>,
-    val fov: Float
+    val fov: Float // Возвращаем FOV сюда
 )
 
 class CustomESPView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : View(context, attrs, defStyleAttr) { // <-- ИСПРАВЛЕНИЕ ЗДЕСЬ!
+) : View(context, attrs, defStyleAttr) {
 
     private var espData: ESPData? = null
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -59,7 +59,7 @@ class CustomESPView @JvmOverloads constructor(
         val playerPosition = data.playerPosition
         val playerRotation = data.playerRotation
         val entities = data.entities
-        // val fov = data.fov // FOV больше не используется напрямую в onDraw для передачи в worldToScreen
+        val fov = data.fov // Используем FOV из данных
 
         val screenWidth = width.toFloat()
         val screenHeight = height.toFloat()
@@ -74,8 +74,8 @@ class CustomESPView @JvmOverloads constructor(
                 playerYaw = playerRotation.y,
                 playerPitch = playerRotation.x,
                 screenWidth = screenWidth,
-                screenHeight = screenHeight
-                // fov больше не передается в worldToScreen, так как он там не используется
+                screenHeight = screenHeight,
+                fov = fov // Передаем FOV
             )
 
             screenPos?.let { // Проверяем, что screenPos не null (то есть сущность видна)
@@ -123,8 +123,8 @@ class CustomESPView @JvmOverloads constructor(
         playerYaw: Float,
         playerPitch: Float,
         screenWidth: Float,
-        screenHeight: Float
-        // FOV удален из сигнатуры, так как он не используется для расчетов здесь
+        screenHeight: Float,
+        fov: Float // Добавляем FOV
     ): Offset? {
         val cameraHeightOffset = 1.62f // Высота глаз игрока над ногами в Minecraft
         val playerCameraY = playerPos.y + cameraHeightOffset
@@ -165,16 +165,20 @@ class CustomESPView @JvmOverloads constructor(
             return null
         }
 
-        // *** УТОЧНЕННЫЕ Эмпирические коэффициенты масштаба ***
-        val adjustedXScale = 265f 
-        val adjustedYScale = 35.0f 
-        // ***************************************************
+        // *** НОВОЕ: Расчет масштаба с использованием FOV и соотношения сторон ***
+        val fovRad = Math.toRadians(fov.toDouble()).toFloat()
+        val aspectRatio = screenWidth / screenHeight
         
-        val screenX = (-x1 / z2) * adjustedXScale + screenWidth / 2 
-        val screenY = screenHeight / 2 - (y1 / z2) * adjustedYScale
+        // Horizontal FOV factor
+        val fovFactorX = 1f / tan(fovRad / 2f) 
+        // Vertical FOV factor (based on horizontal FOV and aspect ratio)
+        val fovFactorY = fovFactorX * aspectRatio 
 
-        // *** Проверка нахождения на экране после преобразования ***
-        val margin = 50f 
+        val screenX = (screenWidth / 2) + (x1 / z2) * (screenWidth / 2) * fovFactorX
+        val screenY = (screenHeight / 2) - (y1 / z2) * (screenHeight / 2) * fovFactorY // Invert Y-axis
+
+        // Увеличим марджины для более надежного отсечения
+        val margin = 100f 
         if (screenX < -margin || screenX > screenWidth + margin ||
             screenY < -margin || screenY > screenHeight + margin) {
             Log.d("ESPDebug", "Entity out of screen bounds after projection: X=$screenX, Y=$screenY")
@@ -196,7 +200,8 @@ class CustomESPView @JvmOverloads constructor(
         color: Int,
         username: String?
     ) {
-        val baseScale = 1200f 
+        // Коэффициент масштабирования бокса в зависимости от расстояния
+        val baseScale = 1200f // Это значение, возможно, все еще потребуется тонко настроить
         val scaleFactor = baseScale / distance.coerceAtLeast(1f) 
         val screenWidthPx = (entityWidth * scaleFactor).coerceIn(20f, 150f) 
         val screenHeightPx = (entityHeight * scaleFactor).coerceIn(40f, 300f)
@@ -216,6 +221,7 @@ class CustomESPView @JvmOverloads constructor(
             paint
         )
 
+        // Дополнительная точка в центре для отладки
         paint.style = Paint.Style.FILL
         paint.alpha = 255
         paint.color = AndroidColor.WHITE
