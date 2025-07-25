@@ -10,14 +10,11 @@ import org.cloudburstmc.math.vector.Vector2f
 import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.math.vector.Vector3i
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType
-// import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryActionData // Не используется напрямую в финальной версии, но может быть в других частях
-// import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventorySource // Не используется напрямую в финальной версии
-// import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId // Не используется напрямую в финальной версии
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 import org.cloudburstmc.protocol.bedrock.data.PlayerAuthInputData
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction // <--- ВАЖНЫЙ ИМПОРТ
+// org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction // <--- ЭТОТ ИМПОРТ БОЛЬШЕ НЕ НУЖЕН НАПРЯМУЮ
 
 import kotlin.math.floor
 import android.util.Log // <--- ВАЖНЫЙ ИМПОРТ ДЛЯ ЛОГОВ
@@ -89,7 +86,7 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
                             Log.d(TAG, "Place delay not met. Remaining: ${placeDelay - (now - lastPlaceTime)}ms.")
                         }
                     } else {
-                        Log.w(TAG, "No suitable item (not null/air) found in hotbar to place.")
+                        Log.w(TAG, "No suitable block item (getBlockDefinition() != null) found in hotbar.")
                     }
                 } else {
                     Log.i(TAG, "Block at $blockPos is NOT Air (Block ID is not 0). Skipping placement.")
@@ -169,10 +166,9 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
      */
     private fun findBlockInHotbar(): Int {
         val slot = try {
-            // Теперь просто проверяем, что предмет не null и не является "воздухом".
-            // Если у ItemData в вашей версии нет blockRuntimeId, это самый безопасный способ.
+            // Ищем предмет, который не является null/AIR и имеет BlockDefinition (т.е. является блоком)
             session.localPlayer.inventory.searchForItemInHotbar { itemData ->
-                itemData != null && !itemData.isNull()
+                itemData != null && !itemData.isNull() && itemData.getBlockDefinition() != null
             } ?: -1 // Если не найден, возвращаем -1
         } catch (e: Exception) {
             Log.e(TAG, "Error finding block in hotbar: ${e.message}", e)
@@ -200,37 +196,36 @@ class ScaffoldElement(iconResId: Int = R.drawable.ic_cube_outline_black_24dp) : 
             ItemData.AIR
         }
 
-        // Проверяем, что предмет не является null или воздухом.
-        // Более точная проверка на "является ли блок" здесь затруднена без blockRuntimeId.
-        if (itemInHand.isNull()) { // itemInHand.isNull() уже проверяет на null и AIR
-            Log.w(TAG, "Attempted to place null or AIR item. Aborting block placement.")
+        // Проверяем, что предмет является размещаемым блоком
+        if (itemInHand.isNull() || itemInHand.getBlockDefinition() == null) {
+            Log.w(TAG, "Attempted to place null/AIR item or non-block item. Aborting block placement.")
             return
         }
 
         val clickPosition = calculateClickPosition(blockPos, blockFace)
-        // Использование itemInHand.id и itemInHand.damage. Если это вызывает ошибку, то вашей ItemData их не имеет.
-        Log.d(TAG, "Preparing to place block: Target=$blockPos, Face=$blockFace, Item=${itemInHand.id}:${itemInHand.damage}, ClickPos=$clickPosition")
+        Log.d(TAG, "Preparing to place block: Target=$blockPos, Face=$blockFace, Item=${itemInHand.getDefinition().getIdentifier()}:${itemInHand.getDamage()}, ClickPos=$clickPosition")
 
-        // Создаем объект ItemUseTransaction
-        val itemUseTransaction = ItemUseTransaction().apply {
+        // Создаем главный пакет InventoryTransactionPacket
+        val transactionPacket = InventoryTransactionPacket().apply {
+            this.transactionType = InventoryTransactionType.ITEM_USE // Указываем тип транзакции
+
+            // <--- КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Напрямую присваиваем поля пакету!
             this.blockPosition = blockPos
             this.blockFace = blockFace
             this.hotbarSlot = hotbarSlot
             this.itemInHand = itemInHand
             this.playerPosition = playerPos
             this.clickPosition = clickPosition
-            this.clientInteractPrediction = ItemUseTransaction.PredictedResult.SUCCESS
-            this.triggerType = ItemUseTransaction.TriggerType.PLAYER_INPUT
-            // this.faceDirection = blockFace // <--- УДАЛЕНО: Вызывает Unresolved reference 'faceDirection'
-        }
-
-        // Создаем главный пакет InventoryTransactionPacket
-        val transactionPacket = InventoryTransactionPacket().apply {
-            this.transactionType = InventoryTransactionType.ITEM_USE
-            this.transactionData = itemUseTransaction // <--- СОХРАНЕНО: Если это вызывает Unresolved reference, то у вас очень старая или сильно отличающаяся версия библиотеки.
+            this.clientInteractPrediction = org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction.PredictedResult.SUCCESS
+            this.triggerType = org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction.TriggerType.PLAYER_INPUT
+            this.blockDefinition = itemInHand.getBlockDefinition() // Передаем BlockDefinition предмета
+            this.headPosition = Vector3f.from(playerPos.x, playerPos.y + 1.62f, playerPos.z) // Пример: можно использовать headPosition
+            
+            // Важно: для ITEM_USE список actions обычно должен быть пустым.
             this.actions.clear() // Убеждаемся, что список действий пуст
         }
 
+        // Отправляем пакет
         session.serverBound(transactionPacket)
         Log.d(TAG, "InventoryTransactionPacket (ITEM_USE) sent for block $blockPos.")
     }
