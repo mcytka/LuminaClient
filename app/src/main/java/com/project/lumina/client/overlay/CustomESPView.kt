@@ -96,8 +96,14 @@ class CustomESPView @JvmOverloads constructor(
             // нужно будет добавить смещение по Y
             val entityCenterX = entity.vec3Position.x
             val entityCenterZ = entity.vec3Position.z
-            val entityFeetY = entity.vec3Position.y
-            val entityHeadY = entity.vec3Position.y + entityHeight
+
+            // ИЗМЕНЕНИЕ:
+            // Предполагаем, что entity.vec3Position.y - это уровень глаз (или верхней части тела) сущности.
+            // Вычитаем 1.62f (стандартную высоту глаз над ногами в Minecraft), чтобы получить уровень ног.
+            val entityFeetY = entity.vec3Position.y - 1.62f
+            // Голова теперь отсчитывается от уровня ног, добавляя полную высоту сущности.
+            val entityHeadY = entityFeetY + entityHeight
+
 
             // Проектируем 8 вершин bounding box'а сущности
             val halfWidth = entityWidth / 2f
@@ -132,12 +138,12 @@ class CustomESPView @JvmOverloads constructor(
 
             // Если хотя бы одна вершина за камерой, пропускаем сущность
             if (anyVertexBehindCamera) {
-                return@forEach // ИСПОЛЬЗУЕМ return@forEach вместо continue
+                return@forEach
             }
 
             // Если все вершины проецировались, но список пуст (что маловероятно), тоже пропускаем
             if (screenPositions.isEmpty()) {
-                return@forEach // ИСПОЛЬЗУЕМ return@forEach вместо continue
+                return@forEach
             }
 
             // Вычисляем минимальные/максимальные X/Y на экране для 2D-бокса
@@ -152,7 +158,7 @@ class CustomESPView @JvmOverloads constructor(
             val margin = 10f // Маленький отступ, чтобы бокс исчезал сразу за краем
             if (maxX_screen <= -margin || minX_screen >= screenWidth + margin ||
                 maxY_screen <= -margin || minY_screen >= screenHeight + margin) {
-                return@forEach // ИСПОЛЬЗУЕМ return@forEach вместо continue
+                return@forEach
             }
 
             // Если бокс виден, отрисовываем его
