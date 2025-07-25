@@ -8,7 +8,7 @@ import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.game.entity.*
 import com.project.lumina.client.overlay.ESPOverlay
 import org.cloudburstmc.math.vector.Vector3f
-import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
+import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket // Этот импорт остается, если он используется для других частей модуля Fly/ESP, но не для логики обновления ESP.
 
 class ESPElement : Element(
     name = "esp_module",
@@ -37,16 +37,21 @@ class ESPElement : Element(
     }
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
-        if (!isEnabled || !isSessionCreated || interceptablePacket.packet !is PlayerAuthInputPacket) return
+        // Убрано условие `interceptablePacket.packet !is PlayerAuthInputPacket`
+        // Теперь ESP будет обновляться при каждом проходящем пакете.
+        if (!isEnabled || !isSessionCreated) return
 
-        val packet = interceptablePacket.packet
-        val position = Vector3f.from(packet.position.x, packet.position.y, packet.position.z)
-        val rotationYaw = packet.rotation.y
-        val rotationPitch = packet.rotation.x
+        val currentLocalPlayer = session.localPlayer
+        if (currentLocalPlayer != null) {
+            // Используем актуальные позиции и ротации из session.localPlayer
+            val position = currentLocalPlayer.vec3Position
+            val rotationYaw = currentLocalPlayer.yaw
+            val rotationPitch = currentLocalPlayer.pitch
 
-        ESPOverlay.updatePlayerData(position, rotationPitch, rotationYaw)
-        ESPOverlay.updateEntities(searchForClosestEntities())
-        ESPOverlay.setFov(60.0f) // <-- ДОБАВЬТЕ ЭТУ СТРОКУ! (Используйте ваше точное значение FOV)
+            ESPOverlay.updatePlayerData(position, rotationPitch, rotationYaw)
+            ESPOverlay.updateEntities(searchForClosestEntities())
+            ESPOverlay.setFov(60.0f) // Используйте ваше точное значение FOV, если оно фиксировано.
+        }
     }
 
     private fun searchForClosestEntities(): List<Entity> {
