@@ -9,37 +9,35 @@ import android.view.View
 import com.project.lumina.client.game.entity.Entity
 import com.project.lumina.client.game.entity.Item
 import com.project.lumina.client.game.entity.Player
+import org.cloudburstmc.math.matrix.Matrix4f // Новый импорт
+import org.cloudburstmc.math.vector.Vector2f // Новый импорт
 import org.cloudburstmc.math.vector.Vector3f
 import kotlin.math.cos
-import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
-// import kotlin.math.tan // Больше не нужен
-import androidx.compose.ui.geometry.Offset
-import android.util.Log
+import kotlin.math.pow
+import android.util.Log // Для отладки
 
-// Новый Data-класс для сущностей, которые будут отрисовываться
 data class ESPRenderEntity(
     val entity: Entity,
-    val username: String? // Nullable, так как не у всех Entity есть username
+    val username: String?
 )
 
-// Data-класс для передачи всех необходимых данных в View
 data class ESPData(
     val playerPosition: Vector3f,
-    val playerRotation: Vector3f,
+    val playerRotation: Vector3f, // rotation.x = pitch, rotation.y = yaw
     val entities: List<ESPRenderEntity>,
-    val fov: Float // FOV остается здесь, но не используется для расчета масштаба в worldToScreen
+    val fov: Float // Это, скорее всего, вертикальный FOV, как в новом коде 110f
 )
 
 class CustomESPView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : View(context, attrs, defStyleAttr) { // ИСПРАВЛЕНИЕ: здесь нет дублирования типов
+) : View(context, attrs, defStyleAttr) {
 
     private var espData: ESPData? = null
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG) // Исправлена опечатка
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     init {
         setWillNotDraw(false)
@@ -57,55 +55,169 @@ class CustomESPView @JvmOverloads constructor(
         val data = espData ?: return
 
         val playerPosition = data.playerPosition
-        val playerRotation = data.playerRotation
+        val playerYaw = data.playerRotation.y
+        val playerPitch = data.playerRotation.x
         val entities = data.entities
-        // val fov = data.fov // FOV больше не используется напрямую в onDraw для передачи в worldToScreen
+        val fov = data.fov // Теперь это FOV, используемый для перспективы
 
         val screenWidth = width.toFloat()
         val screenHeight = height.toFloat()
+
+        // --- Создание матрицы вида-проекции ---
+        // Матрица перспективы (fov, aspectRatio, nearPlane, farPlane)
+        val viewProjMatrix = Matrix4f.createPerspective(
+            fov, // FOV в градусах
+            screenWidth / screenHeight, // Соотношение сторон
+            0.1f, // Ближняя плоскость отсечения
+            128f // Дальняя плоскость отсечения (можете настроить)
+        )
+        .mul(
+            // Матрица вида (инвертированная матрица камеры)
+            Matrix4f.createTranslation(playerPosition) // Перемещение камеры к игроку
+                .mul(rotateY(-playerYaw - 180f)) // Поворот камеры по Yaw (рысканье). Добавляем -180 для соответствия ориентации.
+                .mul(rotateX(-playerPitch)) // Поворот камеры по Pitch (тангаж)
+                .invert() // Инвертируем, чтобы получить матрицу вида
+        )
+        // --- Конец создания матрицы ---
 
         entities.forEach { renderEntity ->
             val entity = renderEntity.entity
             val username = renderEntity.username
 
-            val screenPos = worldToScreen(
-                entity = entity,
-                playerPos = playerPosition,
-                playerYaw = playerRotation.y,
-                playerPitch = playerRotation.x,
-                screenWidth = screenWidth,
-                screenHeight = screenHeight
-                // fov больше не передается в worldToScreen, так как он там не используется
+            // Определяем размеры сущности
+            val (entityWidth, entityHeight) = getEntitySize(entity)
+
+            // Важно: если entity.vec3Position это ноги, то для получения центра и головы
+            // нужно будет добавить смещение по Y
+            val entityCenterX = entity.vec3Position.x
+            val entityCenterZ = entity.vec3Position.z
+            val entityFeetY = entity.vec3Position.y
+            val entityHeadY = entity.vec3Position.y + entityHeight
+
+            // Проектируем 8 вершин bounding box'а сущности
+            val halfWidth = entityWidth / 2f
+            val halfDepth = entityWidth / 2f // Для MC обычно ширина = глубина
+
+            // Вершины bounding box'а в мировых координатах
+            val boxVertices = arrayOf(
+                Vector3f.from(entityCenterX - halfWidth, entityFeetY, entityCenterZ - halfDepth),          // 0: Bottom front left
+                Vector3f.from(entityCenterX - halfWidth, entityHeadY, entityCenterZ - halfDepth),          // 1: Top front left
+                Vector3f.from(entityCenterX + halfWidth, entityHeadY, entityCenterZ - halfDepth),          // 2: Top front right
+                Vector3f.from(entityCenterX + halfWidth, entityFeetY, entityCenterZ - halfDepth),          // 3: Bottom front right
+                Vector3f.from(entityCenterX - halfWidth, entityFeetY, entityCenterZ + halfDepth),          // 4: Bottom back left
+                Vector3f.from(entityCenterX - halfWidth, entityHeadY, entityCenterZ + halfDepth),          // 5: Top back left
+                Vector3f.from(entityCenterX + halfWidth, entityHeadY, entityCenterZ + halfDepth),          // 6: Top back right
+                Vector3f.from(entityCenterX + halfWidth, entityFeetY, entityCenterZ + halfDepth)           // 7: Bottom back right
             )
 
-            screenPos?.let { // Проверяем, что screenPos не null (то есть сущность видна)
-                val distance = sqrt(
-                    (entity.posX - playerPosition.x).pow(2) +
-                    (entity.posY - playerPosition.y).pow(2) +
-                    (entity.posZ - playerPosition.z).pow(2)
-                ).toFloat()
+            var minX_screen = screenWidth
+            var minY_screen = screenHeight
+            var maxX_screen = 0f
+            var maxY_screen = 0f
+            var allVerticesProjected = true
 
-                val (entityWidth, entityHeight) = getEntitySize(entity)
-                val color = getEntityColor(entity)
-
-                drawEntityESP(
-                    canvas = canvas,
-                    position = it,
-                    distance = distance,
-                    entityWidth = entityWidth,
-                    entityHeight = entityHeight,
-                    color = color,
-                    username = username
-                )
+            // Проецируем каждую вершину
+            val screenPositions = boxVertices.mapNotNull { vertex ->
+                val screenPos = worldToScreen(vertex, viewProjMatrix, screenWidth.toInt(), screenHeight.toInt())
+                if (screenPos == null) {
+                    allVerticesProjected = false // Если хотя бы одна вершина не проецируется (за камерой), не рисуем
+                }
+                screenPos
             }
+
+            if (!allVerticesProjected || screenPositions.isEmpty()) {
+                continue // Пропускаем сущность, если не все вершины проецируются (т.е. часть за камерой)
+            }
+
+            // Вычисляем минимальные/максимальные X/Y на экране для 2D-бокса
+            screenPositions.forEach { screenPos ->
+                minX_screen = minX_screen.coerceAtMost(screenPos.x)
+                minY_screen = minY_screen.coerceAtMost(screenPos.y)
+                maxX_screen = maxX_screen.coerceAtLeast(screenPos.x)
+                maxY_screen = maxY_screen.coerceAtLeast(screenPos.y)
+            }
+
+            // Проверяем, находится ли бокс полностью вне экрана (с небольшим запасом)
+            val margin = 10f // Маленький отступ, чтобы бокс исчезал сразу за краем
+            if (maxX_screen <= -margin || minX_screen >= screenWidth + margin ||
+                maxY_screen <= -margin || minY_screen >= screenHeight + margin) {
+                continue // Пропускаем, если бокс полностью вне экрана
+            }
+
+            // Если бокс виден, отрисовываем его
+            val distance = sqrt(
+                (entity.posX - playerPosition.x).pow(2) +
+                (entity.posY - playerPosition.y).pow(2) +
+                (entity.posZ - playerPosition.z).pow(2)
+            ).toFloat()
+
+            val color = getEntityColor(entity)
+
+            // Передаем min/max screen X/Y для 2D бокса
+            draw2DBox(canvas, paint, minX_screen, minY_screen, maxX_screen, maxY_screen, color, username, distance)
+            // Если захотите 3D бокс, то будете рисовать линии между projectedScreenPositions[i] и projectedScreenPositions[j]
         }
     }
 
+    // --- Вспомогательные функции для матриц ---
+    private fun rotateX(angle: Float): Matrix4f {
+        val rad = Math.toRadians(angle.toDouble()).toFloat()
+        val c = cos(rad)
+        val s = sin(rad)
+
+        return Matrix4f.from(
+            1f, 0f, 0f, 0f,
+            0f, c, -s, 0f,
+            0f, s, c, 0f,
+            0f, 0f, 0f, 1f
+        )
+    }
+
+    private fun rotateY(angle: Float): Matrix4f {
+        val rad = Math.toRadians(angle.toDouble()).toFloat()
+        val c = cos(rad)
+        val s = sin(rad)
+
+        return Matrix4f.from(
+            c, 0f, s, 0f,
+            0f, 1f, 0f, 0f,
+            -s, 0f, c, 0f,
+            0f, 0f, 0f, 1f
+        )
+    }
+    // --- Конец вспомогательных функций ---
+
+    // worldToScreen теперь использует матрицу
+    private fun worldToScreen(pos: Vector3f, viewProjMatrix: Matrix4f, screenWidth: Int, screenHeight: Int): Vector2f? {
+        // Проекция точки в Clip Space
+        val clipX = viewProjMatrix.get(0, 0) * pos.x + viewProjMatrix.get(0, 1) * pos.y + viewProjMatrix.get(0, 2) * pos.z + viewProjMatrix.get(0, 3)
+        val clipY = viewProjMatrix.get(1, 0) * pos.x + viewProjMatrix.get(1, 1) * pos.y + viewProjMatrix.get(1, 2) * pos.z + viewProjMatrix.get(1, 3)
+        val clipZ = viewProjMatrix.get(2, 0) * pos.x + viewProjMatrix.get(2, 1) * pos.y + viewProjMatrix.get(2, 2) * pos.z + viewProjMatrix.get(2, 3)
+        val clipW = viewProjMatrix.get(3, 0) * pos.x + viewProjMatrix.get(3, 1) * pos.y + viewProjMatrix.get(3, 2) * pos.z + viewProjMatrix.get(3, 3)
+
+        // Отсечение по W: если W < 0.1f (или другое малое положительное число),
+        // значит точка находится за ближней плоскостью отсечения или позади камеры.
+        if (clipW < 0.1f) return null // Проверяем порог для W.
+
+        val inverseW = 1f / clipW
+
+        // Преобразование из Clip Space в Normalized Device Coordinates (NDC)
+        val ndcX = clipX * inverseW
+        val ndcY = clipY * inverseW
+        val ndcZ = clipZ * inverseW // z-координата также может быть полезна для отладки
+
+        // Преобразование из NDC в Screen Coordinates
+        val screenX = screenWidth / 2f + (0.5f * ndcX * screenWidth)
+        val screenY = screenHeight / 2f - (0.5f * ndcY * screenHeight) // Инвертируем Y, так как в Android Y увеличивается вниз
+
+        return Vector2f.from(screenX, screenY)
+    }
+
     private fun getEntitySize(entity: Entity): Pair<Float, Float> {
-        return when {
-            entity is Player -> Pair(0.6f, 1.8f) // Ширина 0.6, высота 1.8
-            entity is Item -> Pair(0.25f, 0.25f)
-            else -> Pair(0.5f, 0.5f)
+        return when (entity) {
+            is Player, is LocalPlayer -> Pair(0.6f, 1.8f) // Стандартная ширина и высота игрока
+            is Item -> Pair(0.25f, 0.25f) // Пример для предметов
+            else -> Pair(0.5f, 0.5f) // Дефолтные размеры для других сущностей
         }
     }
 
@@ -117,134 +229,42 @@ class CustomESPView @JvmOverloads constructor(
         }
     }
 
-    private fun worldToScreen(
-        entity: Entity,
-        playerPos: Vector3f,
-        playerYaw: Float,
-        playerPitch: Float,
-        screenWidth: Float,
-        screenHeight: Float
-        // FOV удален из сигнатуры, так как он не используется для расчетов здесь
-    ): Offset? {
-        val cameraHeightOffset = 1.62f // Высота глаз игрока над ногами в Minecraft
-        val playerCameraY = playerPos.y + cameraHeightOffset
-
-        val (_, entityTotalHeight) = getEntitySize(entity)
-        val entityCenterY = entity.vec3Position.y + (entityTotalHeight / 2)
-
-        // Log.d("ESPDebug", "Screen Width: $screenWidth, Screen Height: $screenHeight") // Удален
-        // Log.d("ESPDebug", "--- worldToScreen Debug ---") // Удален
-        // Log.d("ESPDebug", "Player Pos: ${playerPos.x}, ${playerPos.y}, ${playerPos.z}") // Удален
-        // Log.d("ESPDebug", "Entity Pos: ${entity.vec3Position.x}, ${entity.vec3Position.y}, ${entity.vec3Position.z}") // Удален
-        // Log.d("ESPDebug", "Relative (dx, dy, dz - original): $dx, $dy, $dz") // Удален
-        // Log.d("ESPDebug", "Player Yaw/Pitch (raw deg): $playerYaw, $playerPitch") // Удален
-
-        val dx = entity.vec3Position.x - playerPos.x
-        val dy = entityCenterY - playerCameraY
-        val dz = entity.vec3Position.z - playerPos.z
-
-        val yawRad = Math.toRadians(-playerYaw.toDouble()).toFloat() // Инверсия Yaw
-        val pitchRad = Math.toRadians(-playerPitch.toDouble()).toFloat() // Инверсия Pitch
-
-        // Log.d("ESPDebug", "Yaw/Pitch (rad, WITH inv): $yawRad, $pitchRad") // Удален
-
-        val x1 = dx * cos(yawRad) - dz * sin(yawRad)
-        val z1 = dx * sin(yawRad) + dz * cos(yawRad)
-
-        // Log.d("ESPDebug", "After Yaw Rotation (x1, z1): $x1, $z1") // Удален
-
-        val y1 = dy * cos(pitchRad) - z1 * sin(pitchRad)
-        val z2 = dy * sin(pitchRad) + z1 * cos(pitchRad)
-
-        // Log.d("ESPDebug", "After Pitch Rotation (y1, z2): $y1, z2: $z2") // Удален
-
-        if (z2 < 0.2f) { // Увеличиваем clipping plane немного, чтобы избежать артефактов
-            Log.d("ESPDebug", "Entity behind camera (z2: $z2) or too close to clipping plane")
-            return null
-        }
-
-        // *** ВОЗВРАЩЕНИЕ к УТОЧНЕННЫМ Эмпирическим коэффициентам масштаба ***
-        val adjustedXScale = 265f 
-        val adjustedYScale = 35.0f 
-        // ***************************************************
-        
-        val screenX = (-x1 / z2) * adjustedXScale + screenWidth / 2 
-        val screenY = screenHeight / 2 - (y1 / z2) * adjustedYScale
-
-        // *** Проверка нахождения на экране после преобразования ***
-        val margin = 100f 
-        if (screenX < -margin || screenX > screenWidth + margin ||
-            screenY < -margin || screenY > screenHeight + margin) {
-            Log.d("ESPDebug", "Entity out of screen bounds after projection: X=$screenX, Y=$screenY")
-            return null
-        }
-
-        Log.d("ESPDebug", "Final Screen Coords (X, Y): $screenX, $screenY")
-        // Log.d("ESPDebug", "--- End worldToScreen Debug ---") // Удален
-
-        return Offset(screenX, screenY)
-    }
-
-    private fun drawEntityESP(
-        canvas: Canvas,
-        position: Offset,
-        distance: Float,
-        entityWidth: Float,
-        entityHeight: Float,
-        color: Int,
-        username: String?
-    ) {
-        val baseScale = 1200f 
-        val scaleFactor = baseScale / distance.coerceAtLeast(1f) 
-        val screenWidthPx = (entityWidth * scaleFactor).coerceIn(20f, 150f) 
-        val screenHeightPx = (entityHeight * scaleFactor).coerceIn(40f, 300f)
-
-        val rectTop = position.y - screenHeightPx / 2
-        val rectBottom = position.y + screenHeightPx / 2
-
+    // Измененная функция отрисовки 2D бокса, чтобы использовать min/max X/Y
+    private fun draw2DBox(canvas: Canvas, paint: Paint, minX: Float, minY: Float, maxX: Float, maxY: Float, color: Int, username: String?, distance: Float) {
         paint.color = color
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 3f 
-        paint.alpha = (0.9f * 255).toInt() 
-        canvas.drawRect(
-            position.x - screenWidthPx / 2,
-            rectTop,
-            position.x + screenWidthPx / 2,
-            rectBottom,
-            paint
-        )
+        paint.strokeWidth = 3f
+        paint.alpha = (0.9f * 255).toInt()
+        canvas.drawRect(minX, minY, maxX, maxY, paint)
 
+        // Центр бокса для кружка, имени и дистанции
+        val centerX = (minX + maxX) / 2
+        val centerY = (minY + maxY) / 2
+
+        // Кружок в центре бокса
         paint.style = Paint.Style.FILL
         paint.alpha = 255
         paint.color = AndroidColor.WHITE
-        canvas.drawCircle(
-            position.x,
-            position.y,
-            5f, 
-            paint
-        )
+        canvas.drawCircle(centerX, centerY, 5f, paint)
 
+        // Имя игрока
         username?.let {
             paint.color = AndroidColor.WHITE
-            paint.textSize = 35f 
+            paint.textSize = 35f
             paint.textAlign = Paint.Align.CENTER
             paint.alpha = 255
-            canvas.drawText(
-                it, 
-                position.x,
-                rectTop - 45, 
-                paint
-            )
+            canvas.drawText(it, centerX, minY - 45, paint) // Над боксом
         }
 
+        // Дистанция
         paint.color = AndroidColor.WHITE
-        paint.textSize = 35f 
+        paint.textSize = 35f
         paint.textAlign = Paint.Align.CENTER
         paint.alpha = 255
         canvas.drawText(
             "%.1fm".format(distance),
-            position.x,
-            rectTop - 15, 
+            centerX,
+            minY - 15, // Немного ниже имени, но все еще над боксом
             paint
         )
     }
