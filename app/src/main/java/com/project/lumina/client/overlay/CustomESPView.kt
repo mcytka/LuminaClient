@@ -39,7 +39,8 @@ class CustomESPView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     private var espData: ESPData? = null
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAC) // Опечатка: ANTI_ALIAS_FLAC -> ANTI_ALIAS_FLAG
+    // ИСПРАВЛЕНИЕ: Опечатка ANTI_ALIAS_FLAC на ANTI_ALIAS_FLAG
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     init {
         setWillNotDraw(false)
@@ -171,8 +172,8 @@ class CustomESPView @JvmOverloads constructor(
         
         Log.d("ESPDebug", "FOV Rad: $fovRad, Scale: $scale, Aspect Ratio: $aspectRatio")
 
-        // *** ГЛАВНОЕ ИЗМЕНЕНИЕ: Инвертируем x1 при расчете screenX ***
-        val screenX = (-x1 / z2) * scale * aspectRatio + screenWidth / 2 // <-- ИНВЕРСИЯ x1
+        // Инвертируем x1 при расчете screenX
+        val screenX = (-x1 / z2) * scale * aspectRatio + screenWidth / 2 
         val screenY = screenHeight / 2 - (y1 / z2) * scale
 
         Log.d("ESPDebug", "Final Screen Coords (X, Y): $screenX, $screenY")
