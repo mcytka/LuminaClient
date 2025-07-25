@@ -8,7 +8,7 @@ import com.project.lumina.client.constructors.CheatCategory
 import com.project.lumina.client.game.entity.*
 import com.project.lumina.client.overlay.ESPOverlay
 import org.cloudburstmc.math.vector.Vector3f
-import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket // Этот импорт остается, если он используется для других частей модуля Fly/ESP, но не для логики обновления ESP.
+import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 
 class ESPElement : Element(
     name = "esp_module",
@@ -37,21 +37,21 @@ class ESPElement : Element(
     }
 
     override fun beforePacketBound(interceptablePacket: InterceptablePacket) {
-        // Убрано условие `interceptablePacket.packet !is PlayerAuthInputPacket`
-        // Теперь ESP будет обновляться при каждом проходящем пакете.
         if (!isEnabled || !isSessionCreated) return
 
         val currentLocalPlayer = session.localPlayer
         if (currentLocalPlayer != null) {
-            // Используем актуальные позиции и ротации из session.localPlayer
+            // Исправлено: использование rotationYaw и rotationPitch
             val position = currentLocalPlayer.vec3Position
-            val rotationYaw = currentLocalPlayer.yaw
-            val rotationPitch = currentLocalPlayer.pitch
+            val rotationYaw = currentLocalPlayer.rotationYaw
+            val rotationPitch = currentLocalPlayer.rotationPitch
 
             ESPOverlay.updatePlayerData(position, rotationPitch, rotationYaw)
             ESPOverlay.updateEntities(searchForClosestEntities())
             ESPOverlay.setFov(60.0f) // Используйте ваше точное значение FOV, если оно фиксировано.
         }
+        
+        // ОСТАЛЬНАЯ ЛОГИКА МОДУЛЯ, ЕСЛИ ЕСТЬ, ИСПОЛЬЗУЮЩАЯ interceptablePacket, должна идти здесь
     }
 
     private fun searchForClosestEntities(): List<Entity> {
