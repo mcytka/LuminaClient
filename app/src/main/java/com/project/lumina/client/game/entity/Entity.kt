@@ -1,3 +1,4 @@
+// Entity.kt
 package com.project.lumina.client.game.entity
 
 import com.project.lumina.client.game.data.Effect
@@ -16,6 +17,7 @@ import org.cloudburstmc.protocol.bedrock.packet.SetEntityDataPacket
 import org.cloudburstmc.protocol.bedrock.packet.SetEntityLinkPacket
 import org.cloudburstmc.protocol.bedrock.packet.UpdateAttributesPacket
 import kotlin.math.sqrt
+import com.project.lumina.client.game.utils.constants.Attribute // <<< ДОБАВЛЕН ЭТОТ ИМПОРТ
 
 @Suppress("MemberVisibilityCanBePrivate")
 open class Entity(open val runtimeEntityId: Long, open val uniqueEntityId: Long) {
@@ -116,6 +118,12 @@ open class Entity(open val runtimeEntityId: Long, open val uniqueEntityId: Long)
 
     open val inventory = EntityInventory(this)
 
+    // <<< ДОБАВЛЕНЫ ЭТИ ПОЛЯ: Текущее и максимальное здоровье >>>
+    // Инициализируем стандартными значениями, которые будут обновлены пакетами
+    var health: Float = 20f
+    var maxHealth: Float = 20f
+    // <<< КОНЕЦ ДОБАВЛЕННЫХ ПОЛЕЙ >>>
+
     open fun move(x: Float, y: Float, z: Float) {
         this.posX = x
         this.posY = y
@@ -188,7 +196,7 @@ open class Entity(open val runtimeEntityId: Long, open val uniqueEntityId: Long)
         } else if (packet is SetEntityDataPacket && packet.runtimeEntityId == runtimeEntityId) {
             handleSetData(packet.metadata)
         } else if (packet is UpdateAttributesPacket && packet.runtimeEntityId == runtimeEntityId) {
-            handleSetAttribute(packet.attributes)
+            handleSetAttribute(packet.attributes) // <<< ВЫЗЫВАЕМ СУЩЕСТВУЮЩИЙ МЕТОД handleSetAttribute
         } else if (packet is SetEntityLinkPacket) {
             when (packet.entityLink.type) {
                 EntityLinkData.Type.RIDER -> if (packet.entityLink.from == uniqueEntityId) rideEntity =
@@ -233,19 +241,31 @@ open class Entity(open val runtimeEntityId: Long, open val uniqueEntityId: Long)
         }
     }
 
+    // <<< ИЗМЕНЕН ЭТОТ МЕТОД: Обновляем поля health и maxHealth здесь >>>
     fun handleSetAttribute(attributeList: List<AttributeData>) {
-        attributeList.forEach {
-            attributes[it.name] = it
+        attributeList.forEach { attribute -> // Изменено на 'attribute' для ясности
+            attributes[attribute.name] = attribute // Сохраняем атрибут в map
+            when (attribute.name) {
+                Attribute.HEALTH -> { // Используем вашу константу
+                    this.health = attribute.value
+                    this.maxHealth = attribute.maximum // Используем 'maximum'
+                }
+                // Вы можете добавить обработку других атрибутов здесь, если нужно
+                // Attribute.MOVEMENT_SPEED -> { this.movementSpeed = attribute.value }
+            }
         }
     }
+    // <<< КОНЕЦ ИЗМЕНЕННОГО МЕТОДА >>>
 
     open fun reset() {
         attributes.clear()
         metadata.clear()
+        // Опционально: сбросить health и maxHealth к дефолтным значениям при reset
+        health = 20f
+        maxHealth = 20f
     }
 
     override fun toString(): String {
         return "Entity(entityId=$runtimeEntityId, uniqueId=$uniqueEntityId, posX=$posX, posY=$posY, posZ=$posZ)"
     }
-
 }
