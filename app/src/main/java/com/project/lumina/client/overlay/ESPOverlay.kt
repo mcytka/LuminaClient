@@ -1,3 +1,4 @@
+//ESPOverlay.kt
 package com.project.lumina.client.overlay
 
 import android.view.Gravity
@@ -19,23 +20,15 @@ import com.project.lumina.client.game.entity.MobList
 import com.project.lumina.client.game.entity.Player // Убедитесь, что Player импортирован
 import org.cloudburstmc.math.vector.Vector3f
 
-// Эти импорты для kotlin.math.cos/sin/tan/sqrt/pow БОЛЬШЕ НЕ НУЖНЫ ЗДЕСЬ
-// так как worldToScreen перенесена в CustomESPView.kt
-// import kotlin.math.cos
-// import kotlin.math.sin
-// import kotlin.math.tan
-// import kotlin.math.sqrt
-// import kotlin.math.pow
-
 
 class ESPOverlay : OverlayWindow() {
     private val _layoutParams by lazy {
         super.layoutParams.apply {
             flags = flags or
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
             width = WindowManager.LayoutParams.MATCH_PARENT
             height = WindowManager.LayoutParams.MATCH_PARENT
             gravity = Gravity.TOP or Gravity.START
@@ -48,8 +41,9 @@ class ESPOverlay : OverlayWindow() {
 
     private var playerPosition by mutableStateOf(Vector3f.ZERO)
     private var playerRotation by mutableStateOf(Vector3f.ZERO)
-    private var entities by mutableStateOf(emptyList<ESPRenderEntity>()) // <-- ИСПРАВЛЕНИЕ ЗДЕСЬ!
+    private var entities by mutableStateOf(emptyList<ESPRenderEntity>())
     private var fov by mutableStateOf(70f)
+    private var use3dBoxes by mutableStateOf(false) // <<< ДОБАВЛЕНО: Состояние переключателя >>>
 
     companion object {
         val overlayInstance by lazy { ESPOverlay() }
@@ -91,6 +85,12 @@ class ESPOverlay : OverlayWindow() {
         fun setFov(newFov: Float) {
             overlayInstance.fov = newFov
         }
+
+        // <<< ДОБАВЛЕНО: Функция для обновления состояния use3dBoxes >>>
+        fun setUse3dBoxes(value: Boolean) {
+            overlayInstance.use3dBoxes = value
+        }
+        // <<< КОНЕЦ ДОБАВЛЕНИЯ >>>
     }
 
     @Composable
@@ -108,25 +108,11 @@ class ESPOverlay : OverlayWindow() {
                         playerPosition = playerPosition,
                         playerRotation = playerRotation,
                         entities = entities,
-                        fov = fov
+                        fov = fov,
+                        use3dBoxes = use3dBoxes // <<< ДОБАВЛЕНО: Передаем состояние >>>
                     )
                 )
             }
         )
     }
-
-    // worldToScreen теперь УДАЛЕНА ИЗ ЭТОГО ФАЙЛА и находится в CustomESPView.kt!
-    /*
-    private fun worldToScreen(
-        entityPos: Vector3f,
-        playerPos: Vector3f,
-        playerYaw: Float,
-        playerPitch: Float,
-        screenWidth: Float,
-        screenHeight: Float,
-        fov: Float
-    ): Offset? {
-        // ... (вся логика worldToScreen)
-    }
-    */
 }
