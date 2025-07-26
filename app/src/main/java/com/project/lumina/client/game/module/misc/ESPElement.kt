@@ -17,7 +17,7 @@ class ESPElement : Element(
     displayNameResId = R.string.module_esp_display_name
 ) {
     private var playersOnly by boolValue("Players", true)
-    private var rangeValue by floatValue("Range", 25f, 2f..200f)
+    private var rangeValue by floatValue("Range", 25f, 2f..500f)
     private var multiTarget = true
     private var maxTargets = 100
     private var use3dBoxes by boolValue("Use 3D Boxes", false)
