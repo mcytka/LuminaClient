@@ -33,8 +33,8 @@ import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket
 import org.cloudburstmc.protocol.bedrock.packet.StartGamePacket
 import org.cloudburstmc.protocol.bedrock.packet.TextPacket
 import java.util.Collections
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap // Добавьте этот импорт
+import java.util.UUID // <--- Добавьте этот импорт
+import java.util.concurrent.ConcurrentHashMap
 
 @Suppress("MemberVisibilityCanBePrivate")
 class NetBound(val luminaRelaySession: LuminaRelaySession) : ComposedPacketHandler, com.project.lumina.client.game.event.Listenable {
@@ -81,9 +81,9 @@ class NetBound(val luminaRelaySession: LuminaRelaySession) : ComposedPacketHandl
         ).versionName
     }
 
-    // <<< ДОБАВЛЕНЫ НОВЫЕ ПОЛЯ ДЛЯ ХРАНЕНИЯ ПОЗИЦИЙ >>>
-    private val lastKnownPlayerPositions = ConcurrentHashMap<Long, Vector3f>() // uniqueEntityId -> lastKnownPosition
-    // <<< КОНЕЦ НОВЫХ ПОЛЕЙ >>>
+    // <<< ИЗМЕНЕНИЕ: Тип ключа теперь UUID >>>
+    private val lastKnownPlayerPositions = ConcurrentHashMap<UUID, Vector3f>()
+    // <<< КОНЕЦ ИЗМЕНЕНИЯ >>>
 
     fun clientBound(packet: BedrockPacket) {
         luminaRelaySession.clientBound(packet)
@@ -116,12 +116,13 @@ class NetBound(val luminaRelaySession: LuminaRelaySession) : ComposedPacketHandl
         world.onPacket(packet)
         level.onPacketBound(packet) // Здесь Level обновляет entityMap
 
-        // <<< ДОБАВЛЕНИЕ: Обновляем lastKnownPlayerPositions для всех активных игроков >>>
-        // Делаем это после того, как level.onPacketBound обновил состояние сущностей.
+        // <<< ИЗМЕНЕНИЕ: Обновляем lastKnownPlayerPositions, используя player.uuid >>>
         level.entityMap.values.filterIsInstance<Player>().forEach { player ->
-            lastKnownPlayerPositions[player.uniqueEntityId] = player.vec3Position
+            player.uuid?.let { uuid -> // Безопасно получаем UUID, если он не null
+                lastKnownPlayerPositions[uuid] = player.vec3Position
+            }
         }
-        // <<< КОНЕЦ ДОБАВЛЕНИЯ >>>
+        // <<< КОНЕЦ ИЗМЕНЕНИЯ >>>
 
 
         val event = EventPacketInbound(this, packet)
@@ -351,22 +352,23 @@ class NetBound(val luminaRelaySession: LuminaRelaySession) : ComposedPacketHandl
         return proxyPlayerNames.contains(playerName)
     }
 
-    // <<< НОВЫЙ МЕТОД: Получение всех сущностей для ESP, включая "призраков" >>>
+    // <<< ИЗМЕНЕНИЕ: Получение всех сущностей для ESP, включая "призраков" >>>
     fun getAllEntitiesForEsp(): List<Entity> {
         val currentEntities = level.entityMap.values.toMutableList()
-        val currentActivePlayerUniqueIds = currentEntities.filterIsInstance<Player>().map { it.uniqueEntityId }.toSet()
+        // Изменено на использование UUID
+        val currentActivePlayerUUIDs = currentEntities.filterIsInstance<Player>().mapNotNull { it.uuid }.toSet()
 
-        val ghostPlayers = lastKnownPlayerPositions.mapNotNull { (uniqueId, position) ->
-            if (uniqueId !in currentActivePlayerUniqueIds) {
+        val ghostPlayers = lastKnownPlayerPositions.mapNotNull { (uuid, position) -> // uuid теперь UUID
+            if (uuid !in currentActivePlayerUUIDs) {
                 // Этот игрок больше не находится в level.entityMap, но у нас есть его последняя известная позиция.
-                // Ищем имя игрока в playerMap по UUID, если оно хранится там.
-                // Предполагаем, что uniqueEntityId может быть использован для поиска связанного Player объекта.
-                val playerInMap = level.playerMap.values.find { it.uniqueEntityId == uniqueId }
+                // Ищем имя игрока в playerMap по UUID.
+                val playerInMap = level.playerMap[uuid] // Ищем по UUID напрямую
                 val playerName = playerInMap?.name ?: "Unknown"
 
                 // Создаем "призрачный" объект Player для отображения.
-                // runtimeEntityId можно установить в 0, UUID можно установить в null.
-                val ghostPlayer = Player(0, uniqueId, null, playerName).apply {
+                // runtimeEntityId можно установить в 0, uniqueEntityId (Long) можно установить в 0L.
+                // Передаем фактический UUID.
+                val ghostPlayer = Player(0, 0L, uuid, playerName).apply { // Передаем uuid напрямую, 0L для uniqueEntityId (Entity's Long ID)
                     this.posX = position.x
                     this.posY = position.y
                     this.posZ = position.z
@@ -380,7 +382,7 @@ class NetBound(val luminaRelaySession: LuminaRelaySession) : ComposedPacketHandl
         }
         return currentEntities + ghostPlayers
     }
-    // <<< КОНЕЦ НОВОГО МЕТОДА >>>
+    // <<< КОНЕЦ ИЗМЕНЕНИЯ >>>
 
     // <<< НОВЫЙ МЕТОД: Очистка сохраненных позиций >>>
     fun clearLastKnownPositions() {
