@@ -1,3 +1,4 @@
+//ESPElement.kt
 package com.project.lumina.client.game.module.misc
 
 import android.util.Log
@@ -20,6 +21,10 @@ class ESPElement : Element(
     private var multiTarget = true
     private var maxTargets = 100
 
+    // <<< ДОБАВЛЕНО: Новый переключатель 2D/3D боксов >>>
+    private var use3dBoxes by boolValue("Use 3D Boxes", false) // false = 2D по умолчанию
+    // <<< КОНЕЦ ДОБАВЛЕНИЯ >>>
+
     override fun onEnabled() {
         super.onEnabled()
         try {
@@ -41,14 +46,17 @@ class ESPElement : Element(
 
         val currentLocalPlayer = session.localPlayer
         if (currentLocalPlayer != null) {
-            // Исправлено: использование rotationYaw и rotationPitch
             val position = currentLocalPlayer.vec3Position
             val rotationYaw = currentLocalPlayer.rotationYaw
             val rotationPitch = currentLocalPlayer.rotationPitch
 
             ESPOverlay.updatePlayerData(position, rotationPitch, rotationYaw)
             ESPOverlay.updateEntities(searchForClosestEntities())
-            ESPOverlay.setFov(60.0f) // Используйте ваше точное значение FOV, если оно фиксировано.
+            ESPOverlay.setFov(60.0f)
+
+            // <<< ДОБАВЛЕНО: Передаем состояние переключателя в Overlay >>>
+            ESPOverlay.setUse3dBoxes(use3dBoxes)
+            // <<< КОНЕЦ ДОБАВЛЕНИЯ >>>
         }
         
         // ОСТАЛЬНАЯ ЛОГИКА МОДУЛЯ, ЕСЛИ ЕСТЬ, ИСПОЛЬЗУЮЩАЯ interceptablePacket, должна идти здесь
