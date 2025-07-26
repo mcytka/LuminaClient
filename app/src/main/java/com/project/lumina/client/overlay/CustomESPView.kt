@@ -1,6 +1,7 @@
+//CustomESPView.kt
 package com.project.lumina.client.overlay
 
-import android.annotation.SuppressLint // Добавлен для @SuppressLint("DefaultLocale")
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
@@ -10,7 +11,7 @@ import android.view.View
 import com.project.lumina.client.game.entity.Entity
 import com.project.lumina.client.game.entity.Item
 import com.project.lumina.client.game.entity.Player
-import com.project.lumina.client.game.entity.LocalPlayer // <<< ДОБАВЛЕННЫЙ ИМПОРТ
+import com.project.lumina.client.game.entity.LocalPlayer
 import org.cloudburstmc.math.matrix.Matrix4f
 import org.cloudburstmc.math.vector.Vector2f
 import org.cloudburstmc.math.vector.Vector3f
@@ -18,14 +19,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.pow
-// Эти импорты уже были не нужны, но их наличие не критично, просто для порядка можно убрать:
-// import kotlin.math.atan2
-// import kotlin.math.abs
-// import kotlin.math.tan
-// import androidx.compose.ui.geometry.Offset // Этот импорт используется, но как альтернатива Vector2f, пусть останется
-
-
-import android.util.Log // Для Log.d/e
+import android.util.Log
 
 data class ESPRenderEntity(
     val entity: Entity,
@@ -36,7 +30,8 @@ data class ESPData(
     val playerPosition: Vector3f,
     val playerRotation: Vector3f, // rotation.x = pitch, rotation.y = yaw
     val entities: List<ESPRenderEntity>,
-    val fov: Float // Это, скорее всего, вертикальный FOV, как в новом коде 110f
+    val fov: Float,
+    val use3dBoxes: Boolean // <<< ДОБАВЛЕНО: Флаг для выбора 2D/3D
 )
 
 class CustomESPView @JvmOverloads constructor(
@@ -58,6 +53,7 @@ class CustomESPView @JvmOverloads constructor(
         invalidate()
     }
 
+    @SuppressLint("DefaultLocale") // Для форматирования дистанции
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
@@ -67,7 +63,7 @@ class CustomESPView @JvmOverloads constructor(
         val playerYaw = data.playerRotation.y
         val playerPitch = data.playerRotation.x
         val entities = data.entities
-        val fov = data.fov // Теперь это FOV, используемый для перспективы
+        val fov = data.fov
 
         val screenWidth = width.toFloat()
         val screenHeight = height.toFloat()
@@ -157,8 +153,10 @@ class CustomESPView @JvmOverloads constructor(
 
             // Проверяем, находится ли бокс полностью вне экрана (с небольшим запасом)
             val margin = 10f // Маленький отступ, чтобы бокс исчезал сразу за краем
-            if (maxX_screen <= -margin || minX_screen >= screenWidth + margin ||
-                maxY_screen <= -margin || minY_screen >= screenHeight + margin) {
+            if (maxX_screen <= -margin ||
+                minX_screen >= screenWidth + margin ||
+                maxY_screen <= -margin ||
+                minY_screen >= screenHeight + margin) {
                 return@forEach
             }
 
@@ -170,11 +168,15 @@ class CustomESPView @JvmOverloads constructor(
             ).toFloat()
 
             val color = getEntityColor(entity)
-            paint.color = color // Устанавливаем цвет для 3D-бокса
+            paint.color = color // Устанавливаем цвет для бокса
 
-
-            // ИЗМЕНЕНИЕ: Заменяем draw2DBox на draw3DBox
-            draw3DBox(canvas, paint, screenPositions)
+            // >>> ИЗМЕНЕНИЯ ЗДЕСЬ: Выбор между 2D и 3D боксом <<<
+            if (data.use3dBoxes) {
+                draw3DBox(canvas, paint, screenPositions)
+            } else {
+                draw2DBox(canvas, paint, minX_screen, minY_screen, maxX_screen, maxY_screen, color)
+            }
+            // >>> КОНЕЦ ИЗМЕНЕНИЙ <<<
 
             // Рисуем информацию о сущности (имя и дистанция)
             if (username != null || distance > 0) {
@@ -253,45 +255,13 @@ class CustomESPView @JvmOverloads constructor(
         }
     }
 
-    // Эта функция больше не используется, но может быть полезной для отладки или других целей,
-    // если вам когда-либо понадобится 2D-бокс
-    private fun draw2DBox(canvas: Canvas, paint: Paint, minX: Float, minY: Float, maxX: Float, maxY: Float, color: Int, username: String?, distance: Float) {
+    // Раскомментированная функция для отрисовки 2D-бокса
+    private fun draw2DBox(canvas: Canvas, paint: Paint, minX: Float, minY: Float, maxX: Float, maxY: Float, color: Int) {
         paint.color = color
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 3f
         paint.alpha = (0.9f * 255).toInt()
         canvas.drawRect(minX, minY, maxX, maxY, paint)
-
-        // Центр бокса для кружка, имени и дистанции
-        val centerX = (minX + maxX) / 2
-        val centerY = (minY + maxY) / 2
-
-        // Кружок в центре бокса
-        paint.style = Paint.Style.FILL
-        paint.alpha = 255
-        paint.color = AndroidColor.WHITE
-        canvas.drawCircle(centerX, centerY, 5f, paint)
-
-        // Имя игрока
-        username?.let {
-            paint.color = AndroidColor.WHITE
-            paint.textSize = 35f
-            paint.textAlign = Paint.Align.CENTER
-            paint.alpha = 255
-            canvas.drawText(it, centerX, minY - 45, paint) // Над боксом
-        }
-
-        // Дистанция
-        paint.color = AndroidColor.WHITE
-        paint.textSize = 35f
-        paint.textAlign = Paint.Align.CENTER
-        paint.alpha = 255
-        canvas.drawText(
-            "%.1fm".format(distance),
-            centerX,
-            minY - 15, // Немного ниже имени, но все еще над боксом
-            paint
-        )
     }
 
     // Новая функция для отрисовки 3D-бокса (каркаса)
@@ -358,7 +328,7 @@ class CustomESPView @JvmOverloads constructor(
         }
 
         val info = buildString {
-            if (username != null) { // Если имя есть, добавляем его
+            if (username != null) {
                 append(username)
             }
             // Всегда показываем дистанцию, если она больше 0
