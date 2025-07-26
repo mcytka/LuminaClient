@@ -42,7 +42,7 @@ class ESPOverlay : OverlayWindow() {
     private var entities by mutableStateOf(emptyList<ESPRenderEntity>())
     private var fov by mutableStateOf(70f)
     private var use3dBoxes by mutableStateOf(false)
-    private var showPlayerInfo by mutableStateOf(true) // <<< ДОБАВЛЕНО: Поле для новой настройки >>>
+    private var showPlayerInfo by mutableStateOf(true)
 
     companion object {
         val overlayInstance by lazy { ESPOverlay() }
@@ -71,18 +71,14 @@ class ESPOverlay : OverlayWindow() {
             overlayInstance.playerRotation = Vector3f.from(pitch, yaw, 0f)
         }
 
-        // <<< ИЗМЕНЕНИЯ ЗДЕСЬ: Заполнение health и maxHealth >>>
         fun updateEntities(entityList: List<Entity>) {
             overlayInstance.entities = entityList.map { entity ->
                 ESPRenderEntity(
                     entity = entity,
-                    username = (entity as? Player)?.username,
-                    health = entity.health, // Получаем текущее здоровье из Entity
-                    maxHealth = entity.maxHealth // Получаем максимальное здоровье из Entity
+                    username = if (entity.isDisappeared) "GHOST:${(entity as? Player)?.username ?: "Unknown"}" else (entity as? Player)?.username
                 )
             }
         }
-        // <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
 
         fun setFov(newFov: Float) {
             overlayInstance.fov = newFov
@@ -92,11 +88,9 @@ class ESPOverlay : OverlayWindow() {
             overlayInstance.use3dBoxes = value
         }
 
-        // <<< ДОБАВЛЕНО: Функция для установки значения showPlayerInfo >>>
         fun setShowPlayerInfo(value: Boolean) {
             overlayInstance.showPlayerInfo = value
         }
-        // <<< КОНЕЦ ДОБАВЛЕННОЙ ФУНКЦИИ >>>
     }
 
     @Composable
@@ -116,7 +110,7 @@ class ESPOverlay : OverlayWindow() {
                         entities = entities,
                         fov = fov,
                         use3dBoxes = use3dBoxes,
-                        showPlayerInfo = showPlayerInfo // <<< ПЕРЕДАЧА НОВОЙ НАСТРОЙКИ >>>
+                        showPlayerInfo = showPlayerInfo
                     )
                 )
             }
