@@ -21,7 +21,6 @@ import kotlin.math.sqrt
 import kotlin.math.pow
 import android.util.Log
 
-// <<< ИЗМЕНЕНИЯ ЗДЕСЬ: Добавлены поля здоровья в ESPRenderEntity >>>
 data class ESPRenderEntity(
     val entity: Entity,
     val username: String?,
@@ -88,8 +87,8 @@ class CustomESPView @JvmOverloads constructor(
         entities.forEach { renderEntity ->
             val entity = renderEntity.entity
             val username = renderEntity.username
-            val health = renderEntity.health // Получаем здоровье
-            val maxHealth = renderEntity.maxHealth // Получаем максимальное здоровье
+            val health = renderEntity.health
+            val maxHealth = renderEntity.maxHealth
 
             val (entityWidth, entityHeight) = getEntitySize(entity)
 
@@ -165,9 +164,7 @@ class CustomESPView @JvmOverloads constructor(
                 draw2DBox(canvas, paint, minX_screen, minY_screen, maxX_screen, maxY_screen, color)
             }
 
-            // <<< ИЗМЕНЕНИЯ ЗДЕСЬ: Условная отрисовка информации с учетом здоровья >>>
             if (data.showPlayerInfo) {
-                // Показываем информацию, если есть имя, дистанция или здоровье > 0
                 if (username != null || distance > 0 || health > 0) {
                     drawEntityInfo(
                         canvas,
@@ -177,12 +174,12 @@ class CustomESPView @JvmOverloads constructor(
                         minX_screen,
                         minY_screen,
                         maxX_screen,
-                        health,     // Передаем текущее здоровье
-                        maxHealth   // Передаем максимальное здоровье
+                        maxY_screen, // <<< ДОБАВЛЕНО: передача maxY_screen
+                        health,
+                        maxHealth
                     )
                 }
             }
-            // <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
         }
     }
 
@@ -279,7 +276,6 @@ class CustomESPView @JvmOverloads constructor(
         canvas.drawLine(p1.x, p1.y, p2.x, p2.y, paint)
     }
 
-    // <<< ИЗМЕНЕНИЯ ЗДЕСЬ: Обновленная функция drawEntityInfo с параметрами здоровья >>>
     @SuppressLint("DefaultLocale")
     private fun drawEntityInfo(
         canvas: Canvas,
@@ -289,8 +285,9 @@ class CustomESPView @JvmOverloads constructor(
         minX: Float,
         minY: Float,
         maxX: Float,
-        health: Float,     // Новый параметр
-        maxHealth: Float   // Новый параметр
+        maxY: Float,     // <<< ДОБАВЛЕННЫЙ ПАРАМЕТР
+        health: Float,
+        maxHealth: Float
     ) {
         val bgPaint = Paint().apply {
             color = AndroidColor.argb(160, 0, 0, 0)
@@ -320,10 +317,9 @@ class CustomESPView @JvmOverloads constructor(
                 if (isNotEmpty()) append(" | ")
                 append("%.1fm".format(distance))
             }
-            // Отображение здоровья
-            if (health > 0) { // Показываем здоровье, если оно больше 0
+            if (health > 0) {
                 if (isNotEmpty()) append(" | ")
-                append("HP: ${health.toInt()}/${maxHealth.toInt()}") // Вывод здоровья
+                append("HP: ${health.toInt()}/${maxHealth.toInt()}")
             }
         }
 
@@ -350,20 +346,17 @@ class CustomESPView @JvmOverloads constructor(
         // Отрисовка полоски здоровья под боксом
         if (health > 0 && maxHealth > 0) {
             val healthBarHeight = 5f
-            val healthBarY = maxY + 5f // Под боксом
+            val healthBarY = maxY + 5f // <<< ИСПОЛЬЗУЕМ ПЕРЕДАННЫЙ maxY
             val healthRatio = health / maxHealth
             val healthBarWidth = maxX - minX
 
-            // Фон полоски здоровья (серый/черный)
             paint.color = AndroidColor.argb(150, 50, 50, 50)
             paint.style = Paint.Style.FILL
             canvas.drawRect(minX, healthBarY, maxX, healthBarY + healthBarHeight, paint)
 
-            // Заполненная часть полоски (зеленая)
             paint.color = AndroidColor.GREEN
             canvas.drawRect(minX, healthBarY, minX + healthBarWidth * healthRatio, healthBarY + healthBarHeight, paint)
 
-            // Обводка полоски здоровья
             paint.color = AndroidColor.BLACK
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 1f
