@@ -1,4 +1,4 @@
-//ESPElement.kt
+// ESPElement.kt
 package com.project.lumina.client.game.module.misc
 
 import android.util.Log
@@ -20,9 +20,10 @@ class ESPElement : Element(
     private var rangeValue by floatValue("Range", 10f, 2f..100f)
     private var multiTarget = true
     private var maxTargets = 100
+    private var use3dBoxes by boolValue("Use 3D Boxes", false)
 
-    // <<< ДОБАВЛЕНО: Новый переключатель 2D/3D боксов >>>
-    private var use3dBoxes by boolValue("Use 3D Boxes", false) // false = 2D по умолчанию
+    // <<< ДОБАВЛЕНО: Новый переключатель для информации о игроках >>>
+    private var showPlayerInfo by boolValue("Show Player Info", true) // По умолчанию включено
     // <<< КОНЕЦ ДОБАВЛЕНИЯ >>>
 
     override fun onEnabled() {
@@ -48,18 +49,14 @@ class ESPElement : Element(
         if (currentLocalPlayer != null) {
             val position = currentLocalPlayer.vec3Position
             val rotationYaw = currentLocalPlayer.rotationYaw
-            val rotationPitch = currentLocalPlayer.rotationPitch
+            val rotationPitch = currentLocalPlayer.rotationPlayerPitch
 
             ESPOverlay.updatePlayerData(position, rotationPitch, rotationYaw)
             ESPOverlay.updateEntities(searchForClosestEntities())
             ESPOverlay.setFov(60.0f)
-
-            // <<< ДОБАВЛЕНО: Передаем состояние переключателя в Overlay >>>
             ESPOverlay.setUse3dBoxes(use3dBoxes)
-            // <<< КОНЕЦ ДОБАВЛЕНИЯ >>>
+            ESPOverlay.setShowPlayerInfo(showPlayerInfo) // <<< ПЕРЕДАЧА НАСТРОЙКИ >>>
         }
-        
-        // ОСТАЛЬНАЯ ЛОГИКА МОДУЛЯ, ЕСЛИ ЕСТЬ, ИСПОЛЬЗУЮЩАЯ interceptablePacket, должна идти здесь
     }
 
     private fun searchForClosestEntities(): List<Entity> {
