@@ -23,9 +23,7 @@ import android.util.Log
 
 data class ESPRenderEntity(
     val entity: Entity,
-    val username: String?,
-    val health: Float,
-    val maxHealth: Float
+    val username: String?
 )
 
 data class ESPData(
@@ -87,15 +85,15 @@ class CustomESPView @JvmOverloads constructor(
         entities.forEach { renderEntity ->
             val entity = renderEntity.entity
             val username = renderEntity.username
-            val health = renderEntity.health
-            val maxHealth = renderEntity.maxHealth
+
+            val renderPosition = if (entity.isDisappeared) entity.lastKnownPosition else entity.vec3Position
 
             val (entityWidth, entityHeight) = getEntitySize(entity)
 
-            val entityCenterX = entity.vec3Position.x
-            val entityCenterZ = entity.vec3Position.z
+            val entityCenterX = renderPosition.x
+            val entityCenterZ = renderPosition.z
 
-            val entityFeetY = entity.vec3Position.y - 1.62f
+            val entityFeetY = renderPosition.y - 1.62f
             val entityHeadY = entityFeetY + entityHeight
 
             val halfWidth = entityWidth / 2f
@@ -150,12 +148,13 @@ class CustomESPView @JvmOverloads constructor(
             }
 
             val distance = sqrt(
-                (entity.posX - playerPosition.x).pow(2) +
-                (entity.posY - playerPosition.y).pow(2) +
-                (entity.posZ - playerPosition.z).pow(2)
+                (renderPosition.x - playerPosition.x).pow(2) +
+                (renderPosition.y - playerPosition.y).pow(2) +
+                (renderPosition.z - playerPosition.z).pow(2)
             ).toFloat()
 
-            val color = getEntityColor(entity)
+            val color = if (entity.isDisappeared) AndroidColor.argb(150, 255, 0, 255) else getEntityColor(entity) // Пурпурный для исчезнувших
+
             paint.color = color
 
             if (data.use3dBoxes) {
@@ -165,7 +164,7 @@ class CustomESPView @JvmOverloads constructor(
             }
 
             if (data.showPlayerInfo) {
-                if (username != null || distance > 0 || health > 0) {
+                if (username != null || distance > 0) {
                     drawEntityInfo(
                         canvas,
                         paint,
@@ -174,9 +173,7 @@ class CustomESPView @JvmOverloads constructor(
                         minX_screen,
                         minY_screen,
                         maxX_screen,
-                        maxY_screen, // <<< ДОБАВЛЕНО: передача maxY_screen
-                        health,
-                        maxHealth
+                        maxY_screen
                     )
                 }
             }
@@ -285,9 +282,7 @@ class CustomESPView @JvmOverloads constructor(
         minX: Float,
         minY: Float,
         maxX: Float,
-        maxY: Float,     // <<< ДОБАВЛЕННЫЙ ПАРАМЕТР
-        health: Float,
-        maxHealth: Float
+        maxY: Float
     ) {
         val bgPaint = Paint().apply {
             color = AndroidColor.argb(160, 0, 0, 0)
@@ -317,10 +312,6 @@ class CustomESPView @JvmOverloads constructor(
                 if (isNotEmpty()) append(" | ")
                 append("%.1fm".format(distance))
             }
-            if (health > 0) {
-                if (isNotEmpty()) append(" | ")
-                append("HP: ${health.toInt()}/${maxHealth.toInt()}")
-            }
         }
 
         if (info.isEmpty()) return
@@ -342,25 +333,5 @@ class CustomESPView @JvmOverloads constructor(
 
         canvas.drawText(info, textX, textY, outlinePaint)
         canvas.drawText(info, textX, textY, textPaint)
-
-        // Отрисовка полоски здоровья под боксом
-        if (health > 0 && maxHealth > 0) {
-            val healthBarHeight = 5f
-            val healthBarY = maxY + 5f // <<< ИСПОЛЬЗУЕМ ПЕРЕДАННЫЙ maxY
-            val healthRatio = health / maxHealth
-            val healthBarWidth = maxX - minX
-
-            paint.color = AndroidColor.argb(150, 50, 50, 50)
-            paint.style = Paint.Style.FILL
-            canvas.drawRect(minX, healthBarY, maxX, healthBarY + healthBarHeight, paint)
-
-            paint.color = AndroidColor.GREEN
-            canvas.drawRect(minX, healthBarY, minX + healthBarWidth * healthRatio, healthBarY + healthBarHeight, paint)
-
-            paint.color = AndroidColor.BLACK
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 1f
-            canvas.drawRect(minX, healthBarY, maxX, healthBarY + healthBarHeight, paint)
-        }
     }
 }
