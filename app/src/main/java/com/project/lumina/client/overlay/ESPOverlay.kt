@@ -1,4 +1,4 @@
-//ESPOverlay.kt
+// ESPOverlay.kt
 package com.project.lumina.client.overlay
 
 import android.view.Gravity
@@ -9,15 +9,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset // Этот импорт все еще нужен, так как CustomESPView использует Offset
-
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.viewinterop.AndroidView
 
 import com.project.lumina.client.game.entity.Entity
 import com.project.lumina.client.game.entity.Item
 import com.project.lumina.client.game.entity.MobList
-import com.project.lumina.client.game.entity.Player // Убедитесь, что Player импортирован
+import com.project.lumina.client.game.entity.Player
 import org.cloudburstmc.math.vector.Vector3f
 
 
@@ -43,7 +41,8 @@ class ESPOverlay : OverlayWindow() {
     private var playerRotation by mutableStateOf(Vector3f.ZERO)
     private var entities by mutableStateOf(emptyList<ESPRenderEntity>())
     private var fov by mutableStateOf(70f)
-    private var use3dBoxes by mutableStateOf(false) // <<< ДОБАВЛЕНО: Состояние переключателя >>>
+    private var use3dBoxes by mutableStateOf(false)
+    private var showPlayerInfo by mutableStateOf(true) // <<< ДОБАВЛЕНО: Поле для новой настройки >>>
 
     companion object {
         val overlayInstance by lazy { ESPOverlay() }
@@ -72,25 +71,32 @@ class ESPOverlay : OverlayWindow() {
             overlayInstance.playerRotation = Vector3f.from(pitch, yaw, 0f)
         }
 
+        // <<< ИЗМЕНЕНИЯ ЗДЕСЬ: Заполнение health и maxHealth >>>
         fun updateEntities(entityList: List<Entity>) {
-            // Преобразуем List<Entity> в List<ESPRenderEntity>
             overlayInstance.entities = entityList.map { entity ->
                 ESPRenderEntity(
                     entity = entity,
-                    username = (entity as? Player)?.username // Приводим к Player и получаем username
+                    username = (entity as? Player)?.username,
+                    health = entity.health, // Получаем текущее здоровье из Entity
+                    maxHealth = entity.maxHealth // Получаем максимальное здоровье из Entity
                 )
             }
         }
+        // <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
 
         fun setFov(newFov: Float) {
             overlayInstance.fov = newFov
         }
 
-        // <<< ДОБАВЛЕНО: Функция для обновления состояния use3dBoxes >>>
         fun setUse3dBoxes(value: Boolean) {
             overlayInstance.use3dBoxes = value
         }
-        // <<< КОНЕЦ ДОБАВЛЕНИЯ >>>
+
+        // <<< ДОБАВЛЕНО: Функция для установки значения showPlayerInfo >>>
+        fun setShowPlayerInfo(value: Boolean) {
+            overlayInstance.showPlayerInfo = value
+        }
+        // <<< КОНЕЦ ДОБАВЛЕННОЙ ФУНКЦИИ >>>
     }
 
     @Composable
@@ -109,7 +115,8 @@ class ESPOverlay : OverlayWindow() {
                         playerRotation = playerRotation,
                         entities = entities,
                         fov = fov,
-                        use3dBoxes = use3dBoxes // <<< ДОБАВЛЕНО: Передаем состояние >>>
+                        use3dBoxes = use3dBoxes,
+                        showPlayerInfo = showPlayerInfo // <<< ПЕРЕДАЧА НОВОЙ НАСТРОЙКИ >>>
                     )
                 )
             }
