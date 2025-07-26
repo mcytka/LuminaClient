@@ -17,7 +17,7 @@ import org.cloudburstmc.protocol.bedrock.packet.SetEntityDataPacket
 import org.cloudburstmc.protocol.bedrock.packet.SetEntityLinkPacket
 import org.cloudburstmc.protocol.bedrock.packet.UpdateAttributesPacket
 import kotlin.math.sqrt
-import com.project.lumina.client.game.utils.constants.Attribute // <<< ДОБАВЛЕН ЭТОТ ИМПОРТ
+import com.project.lumina.client.game.utils.constants.Attribute
 
 @Suppress("MemberVisibilityCanBePrivate")
 open class Entity(open val runtimeEntityId: Long, open val uniqueEntityId: Long) {
@@ -118,11 +118,8 @@ open class Entity(open val runtimeEntityId: Long, open val uniqueEntityId: Long)
 
     open val inventory = EntityInventory(this)
 
-    // <<< ДОБАВЛЕНЫ ЭТИ ПОЛЯ: Текущее и максимальное здоровье >>>
-    // Инициализируем стандартными значениями, которые будут обновлены пакетами
-    var health: Float = 20f
-    var maxHealth: Float = 20f
-    // <<< КОНЕЦ ДОБАВЛЕННЫХ ПОЛЕЙ >>>
+    var lastKnownPosition: Vector3f = Vector3f.ZERO
+    var isDisappeared: Boolean = false
 
     open fun move(x: Float, y: Float, z: Float) {
         this.posX = x
@@ -181,6 +178,8 @@ open class Entity(open val runtimeEntityId: Long, open val uniqueEntityId: Long)
             move(packet.position)
             rotate(packet.rotation)
             tickExists++
+            lastKnownPosition = packet.position
+            isDisappeared = false
         } else if (packet is MoveEntityDeltaPacket && packet.runtimeEntityId == runtimeEntityId) {
             move(
                 if (packet.flags.contains(MoveEntityDeltaPacket.Flag.HAS_X)) packet.x else posX,
@@ -193,10 +192,12 @@ open class Entity(open val runtimeEntityId: Long, open val uniqueEntityId: Long)
                 rotationYawHead + if (packet.flags.contains(MoveEntityDeltaPacket.Flag.HAS_HEAD_YAW)) packet.headYaw else 0f
             )
             tickExists++
+            lastKnownPosition = Vector3f.from(posX, posY, posZ)
+            isDisappeared = false
         } else if (packet is SetEntityDataPacket && packet.runtimeEntityId == runtimeEntityId) {
             handleSetData(packet.metadata)
         } else if (packet is UpdateAttributesPacket && packet.runtimeEntityId == runtimeEntityId) {
-            handleSetAttribute(packet.attributes) // <<< ВЫЗЫВАЕМ СУЩЕСТВУЮЩИЙ МЕТОД handleSetAttribute
+            handleSetAttribute(packet.attributes)
         } else if (packet is SetEntityLinkPacket) {
             when (packet.entityLink.type) {
                 EntityLinkData.Type.RIDER -> if (packet.entityLink.from == uniqueEntityId) rideEntity =
@@ -241,28 +242,18 @@ open class Entity(open val runtimeEntityId: Long, open val uniqueEntityId: Long)
         }
     }
 
-    // <<< ИЗМЕНЕН ЭТОТ МЕТОД: Обновляем поля health и maxHealth здесь >>>
     fun handleSetAttribute(attributeList: List<AttributeData>) {
-        attributeList.forEach { attribute -> // Изменено на 'attribute' для ясности
-            attributes[attribute.name] = attribute // Сохраняем атрибут в map
-            when (attribute.name) {
-                Attribute.HEALTH -> { // Используем вашу константу
-                    this.health = attribute.value
-                    this.maxHealth = attribute.maximum // Используем 'maximum'
-                }
-                // Вы можете добавить обработку других атрибутов здесь, если нужно
-                // Attribute.MOVEMENT_SPEED -> { this.movementSpeed = attribute.value }
-            }
+        attributeList.forEach { attribute ->
+            attributes[attribute.name] = attribute
+            // Логика здоровья была удалена
         }
     }
-    // <<< КОНЕЦ ИЗМЕНЕННОГО МЕТОДА >>>
 
     open fun reset() {
         attributes.clear()
         metadata.clear()
-        // Опционально: сбросить health и maxHealth к дефолтным значениям при reset
-        health = 20f
-        maxHealth = 20f
+        lastKnownPosition = Vector3f.ZERO
+        isDisappeared = false
     }
 
     override fun toString(): String {
