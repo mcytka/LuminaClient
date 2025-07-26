@@ -22,9 +22,7 @@ class ESPElement : Element(
     private var maxTargets = 100
     private var use3dBoxes by boolValue("Use 3D Boxes", false)
 
-    // <<< ДОБАВЛЕНО: Новый переключатель для информации о игроках >>>
-    private var showPlayerInfo by boolValue("Show Player Info", true) // По умолчанию включено
-    // <<< КОНЕЦ ДОБАВЛЕНИЯ >>>
+    private var showPlayerInfo by boolValue("Show Player Info", true)
 
     override fun onEnabled() {
         super.onEnabled()
@@ -49,13 +47,13 @@ class ESPElement : Element(
         if (currentLocalPlayer != null) {
             val position = currentLocalPlayer.vec3Position
             val rotationYaw = currentLocalPlayer.rotationYaw
-            val rotationPitch = currentLocalPlayer.rotationPlayerPitch
+            val rotationPitch = currentLocalPlayer.rotationPitch // <<< ИСПРАВЛЕНО ЗДЕСЬ: rotationPitch вместо rotationPlayerPitch
 
             ESPOverlay.updatePlayerData(position, rotationPitch, rotationYaw)
             ESPOverlay.updateEntities(searchForClosestEntities())
             ESPOverlay.setFov(60.0f)
             ESPOverlay.setUse3dBoxes(use3dBoxes)
-            ESPOverlay.setShowPlayerInfo(showPlayerInfo) // <<< ПЕРЕДАЧА НАСТРОЙКИ >>>
+            ESPOverlay.setShowPlayerInfo(showPlayerInfo)
         }
     }
 
