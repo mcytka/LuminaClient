@@ -1,4 +1,4 @@
-/*/package com.project.lumina.client.game.module.world
+/*package com.project.lumina.client.game.module.world
 
 import android.util.Log
 import com.project.lumina.client.constructors.Module
@@ -184,4 +184,4 @@ class ScaffoldElement(val session: NetBound) : Module("Scaffold", "Automatically
         // Если вы хотите, чтобы Scaffold реагировал на какие-то пакеты, добавьте логику здесь.
     }
 }
-\*\
+*/
