@@ -1,4 +1,4 @@
-//CustomESPView.kt
+// CustomESPView.kt
 package com.project.lumina.client.overlay
 
 import android.annotation.SuppressLint
@@ -21,9 +21,12 @@ import kotlin.math.sqrt
 import kotlin.math.pow
 import android.util.Log
 
+// <<< ИЗМЕНЕНИЯ ЗДЕСЬ: Добавлены поля здоровья в ESPRenderEntity >>>
 data class ESPRenderEntity(
     val entity: Entity,
-    val username: String?
+    val username: String?,
+    val health: Float,
+    val maxHealth: Float
 )
 
 data class ESPData(
@@ -31,7 +34,8 @@ data class ESPData(
     val playerRotation: Vector3f, // rotation.x = pitch, rotation.y = yaw
     val entities: List<ESPRenderEntity>,
     val fov: Float,
-    val use3dBoxes: Boolean // <<< ДОБАВЛЕНО: Флаг для выбора 2D/3D
+    val use3dBoxes: Boolean,
+    val showPlayerInfo: Boolean
 )
 
 class CustomESPView @JvmOverloads constructor(
@@ -53,7 +57,7 @@ class CustomESPView @JvmOverloads constructor(
         invalidate()
     }
 
-    @SuppressLint("DefaultLocale") // Для форматирования дистанции
+    @SuppressLint("DefaultLocale")
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
@@ -68,45 +72,36 @@ class CustomESPView @JvmOverloads constructor(
         val screenWidth = width.toFloat()
         val screenHeight = height.toFloat()
 
-        // --- Создание матрицы вида-проекции ---
-        // Матрица перспективы (fov, aspectRatio, nearPlane, farPlane)
         val viewProjMatrix = Matrix4f.createPerspective(
-            fov, // FOV в градусах
-            screenWidth / screenHeight, // Соотношение сторон
-            0.1f, // Ближняя плоскость отсечения
-            128f // Дальняя плоскость отсечения (можете настроить)
+            fov,
+            screenWidth / screenHeight,
+            0.1f,
+            128f
         )
         .mul(
-            // Матрица вида (инвертированная матрица камеры)
-            Matrix4f.createTranslation(playerPosition) // Перемещение камеры к игроку
-                .mul(rotateY(-playerYaw - 180f)) // Поворот камеры по Yaw (рысканье). Добавляем -180 для соответствия ориентации.
-                .mul(rotateX(-playerPitch)) // Поворот камеры по Pitch (тангаж)
-                .invert() // Инвертируем, чтобы получить матрицу вида
+            Matrix4f.createTranslation(playerPosition)
+                .mul(rotateY(-playerYaw - 180f))
+                .mul(rotateX(-playerPitch))
+                .invert()
         )
-        // --- Конец создания матрицы ---
 
         entities.forEach { renderEntity ->
             val entity = renderEntity.entity
             val username = renderEntity.username
+            val health = renderEntity.health // Получаем здоровье
+            val maxHealth = renderEntity.maxHealth // Получаем максимальное здоровье
 
-            // Определяем размеры сущности
             val (entityWidth, entityHeight) = getEntitySize(entity)
 
             val entityCenterX = entity.vec3Position.x
             val entityCenterZ = entity.vec3Position.z
 
-            // Предполагаем, что entity.vec3Position.y - это уровень глаз (или верхней части тела) сущности.
-            // Вычитаем 1.62f (стандартную высоту глаз над ногами в Minecraft), чтобы получить уровень ног.
             val entityFeetY = entity.vec3Position.y - 1.62f
-            // Голова теперь отсчитывается от уровня ног, добавляя полную высоту сущности.
             val entityHeadY = entityFeetY + entityHeight
 
-
-            // Проектируем 8 вершин bounding box'а сущности
             val halfWidth = entityWidth / 2f
-            val halfDepth = entityWidth / 2f // Для MC обычно ширина = глубина
+            val halfDepth = entityWidth / 2f
 
-            // Вершины bounding box'а в мировых координатах
             val boxVertices = arrayOf(
                 Vector3f.from(entityCenterX - halfWidth, entityFeetY, entityCenterZ - halfDepth),          // 0: Bottom front left
                 Vector3f.from(entityCenterX - halfWidth, entityHeadY, entityCenterZ - halfDepth),          // 1: Top front left
@@ -122,28 +117,24 @@ class CustomESPView @JvmOverloads constructor(
             var minY_screen = screenHeight
             var maxX_screen = 0f
             var maxY_screen = 0f
-            var anyVertexBehindCamera = false // Флаг для отслеживания вершин за камерой
+            var anyVertexBehindCamera = false
 
-            // Проецируем каждую вершину
             val screenPositions = boxVertices.mapNotNull { vertex ->
                 val screenPos = worldToScreen(vertex, viewProjMatrix, screenWidth.toInt(), screenHeight.toInt())
                 if (screenPos == null) {
-                    anyVertexBehindCamera = true // Если хотя бы одна вершина не проецируется (за камерой)
+                    anyVertexBehindCamera = true
                 }
                 screenPos
             }
 
-            // Если хотя бы одна вершина за камерой, пропускаем сущность
             if (anyVertexBehindCamera) {
                 return@forEach
             }
 
-            // Если все вершины проецировались, но список пуст (что маловероятно), тоже пропускаем
             if (screenPositions.isEmpty()) {
                 return@forEach
             }
 
-            // Вычисляем минимальные/максимальные X/Y на экране для 2D-бокса (все еще нужно для текста)
             screenPositions.forEach { screenPos ->
                 minX_screen = minX_screen.coerceAtMost(screenPos.x)
                 minY_screen = minY_screen.coerceAtMost(screenPos.y)
@@ -151,8 +142,7 @@ class CustomESPView @JvmOverloads constructor(
                 maxY_screen = maxY_screen.coerceAtLeast(screenPos.y)
             }
 
-            // Проверяем, находится ли бокс полностью вне экрана (с небольшим запасом)
-            val margin = 10f // Маленький отступ, чтобы бокс исчезал сразу за краем
+            val margin = 10f
             if (maxX_screen <= -margin ||
                 minX_screen >= screenWidth + margin ||
                 maxY_screen <= -margin ||
@@ -160,7 +150,6 @@ class CustomESPView @JvmOverloads constructor(
                 return@forEach
             }
 
-            // Если бокс виден, отрисовываем его
             val distance = sqrt(
                 (entity.posX - playerPosition.x).pow(2) +
                 (entity.posY - playerPosition.y).pow(2) +
@@ -168,29 +157,39 @@ class CustomESPView @JvmOverloads constructor(
             ).toFloat()
 
             val color = getEntityColor(entity)
-            paint.color = color // Устанавливаем цвет для бокса
+            paint.color = color
 
-            // >>> ИЗМЕНЕНИЯ ЗДЕСЬ: Выбор между 2D и 3D боксом <<<
             if (data.use3dBoxes) {
                 draw3DBox(canvas, paint, screenPositions)
             } else {
                 draw2DBox(canvas, paint, minX_screen, minY_screen, maxX_screen, maxY_screen, color)
             }
-            // >>> КОНЕЦ ИЗМЕНЕНИЙ <<<
 
-            // Рисуем информацию о сущности (имя и дистанция)
-            if (username != null || distance > 0) {
-                drawEntityInfo(canvas, paint, username, distance, minX_screen, minY_screen, maxX_screen)
+            // <<< ИЗМЕНЕНИЯ ЗДЕСЬ: Условная отрисовка информации с учетом здоровья >>>
+            if (data.showPlayerInfo) {
+                // Показываем информацию, если есть имя, дистанция или здоровье > 0
+                if (username != null || distance > 0 || health > 0) {
+                    drawEntityInfo(
+                        canvas,
+                        paint,
+                        username,
+                        distance,
+                        minX_screen,
+                        minY_screen,
+                        maxX_screen,
+                        health,     // Передаем текущее здоровье
+                        maxHealth   // Передаем максимальное здоровье
+                    )
+                }
             }
+            // <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
         }
     }
 
-    // --- Вспомогательные функции для матриц ---
     private fun rotateX(angle: Float): Matrix4f {
         val rad = Math.toRadians(angle.toDouble()).toFloat()
         val c = cos(rad)
         val s = sin(rad)
-
         return Matrix4f.from(
             1f, 0f, 0f, 0f,
             0f, c, -s, 0f,
@@ -203,7 +202,6 @@ class CustomESPView @JvmOverloads constructor(
         val rad = Math.toRadians(angle.toDouble()).toFloat()
         val c = cos(rad)
         val s = sin(rad)
-
         return Matrix4f.from(
             c, 0f, s, 0f,
             0f, 1f, 0f, 0f,
@@ -211,39 +209,28 @@ class CustomESPView @JvmOverloads constructor(
             0f, 0f, 0f, 1f
         )
     }
-    // --- Конец вспомогательных функций ---
 
-    // worldToScreen теперь использует матрицу
     private fun worldToScreen(pos: Vector3f, viewProjMatrix: Matrix4f, screenWidth: Int, screenHeight: Int): Vector2f? {
-        // Проекция точки в Clip Space
         val clipX = viewProjMatrix.get(0, 0) * pos.x + viewProjMatrix.get(0, 1) * pos.y + viewProjMatrix.get(0, 2) * pos.z + viewProjMatrix.get(0, 3)
         val clipY = viewProjMatrix.get(1, 0) * pos.x + viewProjMatrix.get(1, 1) * pos.y + viewProjMatrix.get(1, 2) * pos.z + viewProjMatrix.get(1, 3)
         val clipZ = viewProjMatrix.get(2, 0) * pos.x + viewProjMatrix.get(2, 1) * pos.y + viewProjMatrix.get(2, 2) * pos.z + viewProjMatrix.get(2, 3)
         val clipW = viewProjMatrix.get(3, 0) * pos.x + viewProjMatrix.get(3, 1) * pos.y + viewProjMatrix.get(3, 2) * pos.z + viewProjMatrix.get(3, 3)
 
-        // Отсечение по W: если W < 0.1f (или другое малое положительное число),
-        // значит точка находится за ближней плоскостью отсечения или позади камеры.
-        if (clipW < 0.1f) return null // Проверяем порог для W.
+        if (clipW < 0.1f) return null
 
         val inverseW = 1f / clipW
-
-        // Преобразование из Clip Space в Normalized Device Coordinates (NDC)
         val ndcX = clipX * inverseW
         val ndcY = clipY * inverseW
-        val ndcZ = clipZ * inverseW // z-координата также может быть полезна для отладки
-
-        // Преобразование из NDC в Screen Coordinates
         val screenX = screenWidth / 2f + (0.5f * ndcX * screenWidth)
-        val screenY = screenHeight / 2f - (0.5f * ndcY * screenHeight) // Инвертируем Y, так как в Android Y увеличивается вниз
-
+        val screenY = screenHeight / 2f - (0.5f * ndcY * screenHeight)
         return Vector2f.from(screenX, screenY)
     }
 
     private fun getEntitySize(entity: Entity): Pair<Float, Float> {
         return when (entity) {
-            is Player, is LocalPlayer -> Pair(0.6f, 1.8f) // Стандартная ширина и высота игрока
-            is Item -> Pair(0.25f, 0.25f) // Пример для предметов
-            else -> Pair(0.5f, 0.5f) // Дефолтные размеры для других сущностей
+            is Player, is LocalPlayer -> Pair(0.6f, 1.8f)
+            is Item -> Pair(0.25f, 0.25f)
+            else -> Pair(0.5f, 0.5f)
         }
     }
 
@@ -255,7 +242,6 @@ class CustomESPView @JvmOverloads constructor(
         }
     }
 
-    // Раскомментированная функция для отрисовки 2D-бокса
     private fun draw2DBox(canvas: Canvas, paint: Paint, minX: Float, minY: Float, maxX: Float, maxY: Float, color: Int) {
         paint.color = color
         paint.style = Paint.Style.STROKE
@@ -264,64 +250,63 @@ class CustomESPView @JvmOverloads constructor(
         canvas.drawRect(minX, minY, maxX, maxY, paint)
     }
 
-    // Новая функция для отрисовки 3D-бокса (каркаса)
     private fun draw3DBox(canvas: Canvas, paint: Paint, screenPositions: List<Vector2f>) {
         if (screenPositions.size != 8) {
-            // Если не 8 спроецированных вершин, значит что-то пошло не так, не рисуем
             return
         }
 
-        // Устанавливаем стиль для рисования линий бокса
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 3f
-        paint.alpha = (0.9f * 255).toInt() // Прозрачность
+        paint.alpha = (0.9f * 255).toInt()
 
-        // Определяем ребра куба по индексам вершин (согласно порядку в boxVertices)
-        // Нижняя плоскость: 0-3-7-4-0
         drawLine(canvas, paint, screenPositions[0], screenPositions[3])
         drawLine(canvas, paint, screenPositions[3], screenPositions[7])
         drawLine(canvas, paint, screenPositions[7], screenPositions[4])
         drawLine(canvas, paint, screenPositions[4], screenPositions[0])
 
-        // Верхняя плоскость: 1-2-6-5-1
         drawLine(canvas, paint, screenPositions[1], screenPositions[2])
         drawLine(canvas, paint, screenPositions[2], screenPositions[6])
         drawLine(canvas, paint, screenPositions[6], screenPositions[5])
         drawLine(canvas, paint, screenPositions[5], screenPositions[1])
 
-        // Вертикальные ребра (соединяющие верх и низ)
-        drawLine(canvas, paint, screenPositions[0], screenPositions[1]) // 0-1
-        drawLine(canvas, paint, screenPositions[3], screenPositions[2]) // 3-2
-        drawLine(canvas, paint, screenPositions[7], screenPositions[6]) // 7-6
-        drawLine(canvas, paint, screenPositions[4], screenPositions[5]) // 4-5
+        drawLine(canvas, paint, screenPositions[0], screenPositions[1])
+        drawLine(canvas, paint, screenPositions[3], screenPositions[2])
+        drawLine(canvas, paint, screenPositions[7], screenPositions[6])
+        drawLine(canvas, paint, screenPositions[4], screenPositions[5])
     }
 
-    // Вспомогательная функция для рисования линии между двумя Vector2f
     private fun drawLine(canvas: Canvas, paint: Paint, p1: Vector2f, p2: Vector2f) {
         canvas.drawLine(p1.x, p1.y, p2.x, p2.y, paint)
     }
 
-
-    // Функция для отрисовки имени и дистанции над боксом
+    // <<< ИЗМЕНЕНИЯ ЗДЕСЬ: Обновленная функция drawEntityInfo с параметрами здоровья >>>
     @SuppressLint("DefaultLocale")
-    private fun drawEntityInfo(canvas: Canvas, paint: Paint, username: String?, distance: Float, minX: Float, minY: Float, maxX: Float) {
-        // Background paint for text
+    private fun drawEntityInfo(
+        canvas: Canvas,
+        paint: Paint,
+        username: String?,
+        distance: Float,
+        minX: Float,
+        minY: Float,
+        maxX: Float,
+        health: Float,     // Новый параметр
+        maxHealth: Float   // Новый параметр
+    ) {
         val bgPaint = Paint().apply {
-            color = AndroidColor.argb(160, 0, 0, 0) // Semi-transparent black background
+            color = AndroidColor.argb(160, 0, 0, 0)
             style = Paint.Style.FILL
         }
 
-        // Outline paint
         val outlinePaint = Paint().apply {
             color = AndroidColor.BLACK
             textSize = 30f
             textAlign = Paint.Align.CENTER
             style = Paint.Style.STROKE
-            strokeWidth = 4f // Thick outline
+            strokeWidth = 4f
         }
 
         val textPaint = Paint().apply {
-            color = AndroidColor.WHITE // Цвет текста.
+            color = AndroidColor.WHITE
             textSize = 30f
             textAlign = Paint.Align.CENTER
             style = Paint.Style.FILL
@@ -331,18 +316,21 @@ class CustomESPView @JvmOverloads constructor(
             if (username != null) {
                 append(username)
             }
-            // Всегда показываем дистанцию, если она больше 0
             if (distance > 0) {
                 if (isNotEmpty()) append(" | ")
                 append("%.1fm".format(distance))
             }
+            // Отображение здоровья
+            if (health > 0) { // Показываем здоровье, если оно больше 0
+                if (isNotEmpty()) append(" | ")
+                append("HP: ${health.toInt()}/${maxHealth.toInt()}") // Вывод здоровья
+            }
         }
 
-        // Если нет информации для отображения, выходим
         if (info.isEmpty()) return
 
-        val textX = (minX + maxX) / 2 // Используем minX_screen и maxX_screen для центрирования
-        val textY = minY - 10 // Над верхней частью бокса
+        val textX = (minX + maxX) / 2
+        val textY = minY - 10
 
         val bounds = android.graphics.Rect()
         textPaint.getTextBounds(info, 0, info.length, bounds)
@@ -356,8 +344,30 @@ class CustomESPView @JvmOverloads constructor(
         )
         canvas.drawRoundRect(bgRect, 4f, 4f, bgPaint)
 
-        // Отрисовка текста с обводкой и заливкой
         canvas.drawText(info, textX, textY, outlinePaint)
         canvas.drawText(info, textX, textY, textPaint)
+
+        // Отрисовка полоски здоровья под боксом
+        if (health > 0 && maxHealth > 0) {
+            val healthBarHeight = 5f
+            val healthBarY = maxY + 5f // Под боксом
+            val healthRatio = health / maxHealth
+            val healthBarWidth = maxX - minX
+
+            // Фон полоски здоровья (серый/черный)
+            paint.color = AndroidColor.argb(150, 50, 50, 50)
+            paint.style = Paint.Style.FILL
+            canvas.drawRect(minX, healthBarY, maxX, healthBarY + healthBarHeight, paint)
+
+            // Заполненная часть полоски (зеленая)
+            paint.color = AndroidColor.GREEN
+            canvas.drawRect(minX, healthBarY, minX + healthBarWidth * healthRatio, healthBarY + healthBarHeight, paint)
+
+            // Обводка полоски здоровья
+            paint.color = AndroidColor.BLACK
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1f
+            canvas.drawRect(minX, healthBarY, maxX, healthBarY + healthBarHeight, paint)
+        }
     }
 }
