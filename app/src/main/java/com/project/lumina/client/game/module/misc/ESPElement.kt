@@ -12,7 +12,7 @@ import org.cloudburstmc.math.vector.Vector3f
 import org.cloudburstmc.protocol.bedrock.packet.PlayerAuthInputPacket
 
 class ESPElement : Element(
-    name = "esp_module",
+    name = "ESP",
     category = CheatCategory.Misc,
     displayNameResId = R.string.module_esp_display_name
 ) {
