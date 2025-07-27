@@ -111,7 +111,7 @@
     <string name="module_weakness">Weakness</string>
     <string name="module_poison">Poison</string>
     <string name="module_wither">Wither</string>
-    <string name="module_esp_display_name">ESP Overlay</string>
+    <string name="module_esp_display_name">ESP</string>
     <string name="module_critbot_display_name">Criticals</string>
     <string name="module_infiniteaura_display_name">Infinite Aura</string>
     <string name="module_reach_display_name">Reach</string>
